@@ -1,6 +1,8 @@
 from .base import *
 
+print("yoooooo")
 
+print(env('POSTGRES_LOCAL_DB_PASSWORD'))
 
 DATABASES = {
 	'default': {
