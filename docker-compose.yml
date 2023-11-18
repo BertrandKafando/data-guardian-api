@@ -1,0 +1,58 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    restart: always
+    env_file:
+      - ./DataGuardian/DataGuardian/settings/.env
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - dba-network
+
+
+  web-api:
+    build: 
+      context: .
+      dockerfile: ./Dockerfile
+    container_name: web-api
+    restart: "on-failure"
+    env_file: ./DataGuardian/DataGuardian/settings/.env
+    volumes:
+      # - .:/home/app/webapp #very useful to sync the current project files with the container files (used in dev containers)
+      - static_files:/home/app/webapp/static
+      - media_files:/home/app/webapp/media
+    networks:
+      - dba-network
+    depends_on:
+      - postgres
+
+
+  nginx:
+    image: nginx
+    container_name: nginx
+    restart: always
+    ports:
+      - "8083:80" #change to 443 on prod
+      #nginx needs to access to all the volumes (socket, static, media) and also be synced
+    volumes:
+      - .:/home/app/webapp
+      - media_files:/home/app/webapp/media
+      - static_files:/home/app/webapp/static
+      - ./nginx_dev.conf:/etc/nginx/nginx.conf #change to nginx_prod on prod
+      #- /etc/letsencrypt:/etc/letsencrypt
+    networks:
+      - dba-network
+    depends_on:
+      - web-api
+
+volumes:
+  pgdata:
+  static_files:
+  media_files:
+
+networks:
+  apa-network:
