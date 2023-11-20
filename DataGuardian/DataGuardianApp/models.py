@@ -50,7 +50,6 @@ class Role(models.Model):
 class Utilisateur(models.Model):
 
     phone_regex=RegexValidator(regex=r'^([+]){0,}[- ]{0,}([0-9{1,}])[- ]{0,}([0-9]{1,})[- ]{0,}([0-9]{1,}[- ]{0,}){1,}$', message="le numero de telephone est invalide!") #phone number validator
-    image = models.ImageField(upload_to="utilisateurs/images/", validators=[FileExtensionValidator(allowed_extensions=["png","jpg","jpeg"])],null=True, blank=True)
     telephone = models.CharField(validators=[phone_regex],max_length = 100)
     email = models.CharField(max_length = 100, null=True, blank=True)
     prenom = models.CharField(max_length = 100)
