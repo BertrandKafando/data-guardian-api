@@ -7,7 +7,6 @@ import os
 import datetime
 from django.utils import timezone
 
-
 class Compte(models.Model):
 
     identifiant = models.CharField(max_length = 100, unique=True)
@@ -46,7 +45,6 @@ class Role(models.Model):
     __repr__=__str__
 
 
-
 class Utilisateur(models.Model):
 
     phone_regex=RegexValidator(regex=r'^([+]){0,}[- ]{0,}([0-9{1,}])[- ]{0,}([0-9]{1,})[- ]{0,}([0-9]{1,}[- ]{0,}){1,}$', message="le numero de telephone est invalide!") #phone number validator
@@ -61,7 +59,6 @@ class Utilisateur(models.Model):
     role = models.ForeignKey(Role,related_name="utilisateur", on_delete=models.CASCADE)
     compte = models.ForeignKey(Compte,related_name="utilisateur", on_delete=models.CASCADE, null=True, blank=True)
 
-
     def __str__(self):
         return str(self.prenom)
 
@@ -69,8 +66,14 @@ class Utilisateur(models.Model):
 
 
 class Critere(models.Model):
-    # TODO ajouter les critères
-    pass
+
+    nom_critere = models.CharField(max_length=100)
+    expression = models.CharField(max_length=500)
+
+    def __str__(self):
+        return str(self.prenom)
+
+    __repr__=__str__
 
 
 class BaseDeDonnees(models.Model):
@@ -111,7 +114,9 @@ class BaseDeDonnees(models.Model):
         (TABULATION, 'Tabulation')
     ]
 
-    nom_base_de_donnees= models.CharField(max_length=100)
+    nom_base_de_donnees = models.CharField(max_length=100)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_mise_a_jour = models.DateTimeField(default=datetime.datetime.now)
     descriptif = models.TextField(null=True, blank=True)
     type_fichier = models.CharField(max_length=100, choices=CHOIX_FICHIER)
     nom_fichier = models.CharField(max_length=100)
@@ -154,7 +159,7 @@ class Diagnostic(models.Model):
         choices=CHOIX_STATUS
     )
     Utilisateur = models.ForeignKey(Utilisateur,related_name="diagnostic", on_delete=models.CASCADE, null=True, blank=True)
-    criteres = models.ManyToManyField(Critere, related_name='diagnostics', symmetrical=False, null=True, blank=True)
+    criteres = models.ManyToManyField(Critere, related_name='diagnostic', symmetrical=False, null=True, blank=True)
     base_de_donnees = models.ForeignKey(BaseDeDonnees,related_name="diagnostic", on_delete=models.CASCADE, null=True, blank=True)
     
 

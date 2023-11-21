@@ -13,8 +13,295 @@ from django.core.files.base import ContentFile
 from uuid import uuid4
 
 
-
-
 utc = pytz.UTC
 now = timezone.now()
 
+class RoleSerializer(serializers.ModelSerializer):
+    
+    class Meta:
+        model=Role
+        fields=["nom_role"]
+
+class CompteSerializer(serializers.ModelSerializer):
+
+    mot_de_passe=serializers.CharField(
+        style={'input_type': 'password'}
+    )
+
+    class Meta:
+        model=Compte
+        fields='__all__'
+        #extra_kwargs = {
+        #    'identifiant': {'validators': []}
+        #}
+
+    def create(self, validated_data):
+        
+        if not Compte.objects.filter(identifiant=validated_data.get("identifiant")).exists():
+
+            user=User.objects.create_user(username=validated_data.get('identifiant'), password=validated_data.get('mot_de_passe'))
+            content_type = ContentType.objects.get_for_model(Compte)
+            permission = Permission.objects.filter(codename='is_customer').first()
+            if permission:
+                user.user_permissions.add(permission)
+            else:
+                created_permission = Permission.objects.create(codename='is_customer', name='is_customer', content_type=content_type)
+                user.user_permissions.add(created_permission)
+
+            return super(CompteSerializer,self).create(validated_data)
+        else :
+            raise serializers.ValidationError('Ce compte existe déja')
+
+
+    def update(self, instance, validated_data, *args, **kwargs):
+
+        if validated_data.get("identifiant")!=instance.identifiant and Compte.objects.filter(identifiant=validated_data.get("identifiant")).exists():
+            raise serializers.ValidationError("Ce compte existe déja")
+
+        user=User.objects.filter(username=instance.identifiant).first()
+
+        if user :
+            if 'mot_de_passe' in validated_data:
+                user.set_password(validated_data.get("mot_de_passe", validated_data.get('mot_de_passe')))
+            
+            if 'identifiant' in validated_data:
+                user.username=validated_data.get("identifiant", validated_data.get('identifiant'))
+            user.save()
+        else :
+            raise NotFound("cet utilisateur n\'existe pas!")
+
+        return super(CompteSerializer, self).update(instance,validated_data)
+    
+
+
+class UtilisateurSerializer(serializers.ModelSerializer):
+    
+    compte = CompteSerializer(required=False)
+    role= RoleSerializer()
+
+    class Meta:
+        model=Utilisateur
+        fields=["id","compte","role","telephone","organisation","email","prenom","nom"]
+
+
+    def create(self, validated_data):
+
+        compte = None
+        role = None
+
+        if 'compte' in validated_data :
+            compte = validated_data.pop('compte')
+            compte_serializer= CompteSerializer(data=compte)
+            if compte_serializer.is_valid():
+                compte=compte_serializer.save()
+        
+        if Utilisateur.objects.filter(telephone=validated_data.get("telephone")).exists() :
+            raise serializers.ValidationError({"detail" : 'Cet utilisateur existe déja'})
+
+        if  Utilisateur.objects.filter(email=validated_data.get("email")).exists() :
+            raise serializers.ValidationError({"detail" : 'Cet utilisateur existe déja'})
+
+
+        if 'role' in validated_data :
+            role = validated_data.pop("role")
+            if Role.objects.filter(nom_role=role["nom_role"]).exists():
+                role = Role.objects.filter(nom_role=role["nom_role"]).first()
+            else :
+                role  = Role.objects.create(**role)
+
+        
+        if compte is not None :
+
+            identifiant = compte.identifiant
+            user=User.objects.get(username=identifiant)
+            content_type = ContentType.objects.get_for_model(Utilisateur)
+
+            if role.nom_role == "Administrateur" :
+                permission = Permission.objects.filter(codename='is_admin').first()
+                if permission:
+                    user.user_permissions.add(permission)
+                else:
+                    created = Permission.objects.create(codename='is_admin', name='is_admin', content_type=content_type)
+                    user.user_permissions.add(created)
+
+            elif role.nom_role == "Client" :
+                permission = Permission.objects.filter(codename='is_customer').first()
+                if permission:
+                    user.user_permissions.add(permission)
+                else:
+                    created = Permission.objects.create(codename='is_customer', name='is_customer', content_type=content_type)
+                    user.user_permissions.add(created)
+
+            else :
+                raise serializers.ValidationError({"detail" : 'Role invalide!'})
+
+
+
+        utilisateur = Utilisateur.objects.create(
+            compte=compte,
+            role=role,
+            date_mise_a_jour=now,
+            **validated_data
+        )
+
+        return utilisateur
+
+
+
+    def update(self, instance, validated_data,*args, **kwargs):  
+
+        compte=None
+        role=None
+
+        if validated_data.get('telephone')!=instance.telephone and Utilisateur.objects.filter(telephone=validated_data.get("telephone")).exists():
+            raise serializers.ValidationError('Ce numéro de téléphone existe déja existe déja')
+        
+        if validated_data.get('email')!=instance.email and Utilisateur.objects.filter(email=validated_data.get("email")).exists():
+            raise serializers.ValidationError('Cette adresse email existe déja existe déja')
+
+        if 'compte' in validated_data :
+            compte = validated_data.pop('compte')
+
+        if 'role' in validated_data :
+            role = validated_data.pop('role')
+        
+
+        compte_serializer = CompteSerializer(data = compte, partial=True) 
+        role_serializer = RoleSerializer(data = role, partial=True) 
+
+        if compte_serializer.is_valid():
+            compte_serializer.update(instance=instance.compte, validated_data=compte_serializer.validated_data)     
+        
+        if role_serializer.is_valid():
+            role_serializer.update(instance=instance.role, validated_data=role_serializer.validated_data)  
+
+        return super(UtilisateurSerializer,self).update(instance, validated_data)
+
+
+
+class CritereSerializer(serializers.ModelSerializer):
+    
+    class Meta:
+        model=Critere
+        fields=["nom_critere"]
+
+
+class BaseDeDonneesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BaseDeDonnees
+        fields = '__all__'
+
+    def create(self, validated_data):
+
+        fichier = validated_data.pop('fichier_bd', None)
+        if fichier : 
+            validated_data['nom_fichier'] = fichier.name
+            validated_data['taille_fichier'] = fichier.size / (1024 * 1024)
+
+        base_de_donnees = BaseDeDonnees.objects.create(**validated_data)
+        return base_de_donnees
+    
+
+    def update(self, instance, validated_data):
+
+        fichier = validated_data.pop('fichier_bd', None)
+
+        if fichier:
+            validated_data['nom_fichier'] = fichier.name
+            validated_data['taille_fichier'] = fichier.size / (1024 * 1024) 
+
+        instance.nom_base_de_donnees = validated_data.get('nom_base_de_donnees', instance.nom_base_de_donnees)
+        instance.descriptif = validated_data.get('descriptif', instance.descriptif)
+        instance.type_fichier = validated_data.get('type_fichier', instance.type_fichier)
+        instance.format_fichier = validated_data.get('format_fichier', instance.format_fichier)
+        instance.separateur = validated_data.get('separateur', instance.separateur)
+        instance.avec_entete = validated_data.get('avec_entete', instance.avec_entete)
+
+        if fichier:
+            instance.fichier_bd = fichier 
+
+        instance.save()
+        return instance
+    
+
+class DiagnosticSerializer(serializers.Serializer):
+
+    utilisateur = UtilisateurSerializer(required=False)
+    criteres = CritereSerializer(many=True, required=False)
+    base_de_donnees = BaseDeDonneesSerializer(required=False)
+
+    class Meta:
+        fields='__all__'
+
+
+    # TODO : move to APIView on api.py
+
+    def create(self, validated_data):
+
+        base_de_donnees_data = validated_data.pop('base_de_donnees', None)
+
+        if base_de_donnees_data :
+            if base_de_donnees_data.get("fichier_bd", None) :
+                base_de_donnees_serializer = BaseDeDonneesSerializer(data=base_de_donnees_data)
+                base_de_donnees_serializer.is_valid(raise_exception=True)
+                base_de_donnees = base_de_donnees_serializer.save()
+            else : 
+                # On a un select de la BD et non un upload
+                # TODO : récuperer la base de données grace à son nom et l'utilisateur qui l'avait uploadé : query on Diagnostic -> base_de_donnees & utilisateur
+                pass
+
+        diagnostic = Diagnostic.objects.create(base_de_donnees=base_de_donnees, **validated_data)
+
+        # TODO convertir le fichier en Dataframe et exécuter les procédures et fonctions stockées : créer une fonction run diagnostic
+
+        return diagnostic
+    
+
+    def update(self, instance, validated_data):
+
+        instance.criteres.set(validated_data.get('criteres', instance.criteres.all()))
+        base_de_donnees_data = validated_data.get('base_de_donnees', None)
+
+        if base_de_donnees_data :
+
+            if base_de_donnees_data.get("fichier_bd", None) :
+
+                instance.base_de_donnees = validated_data.get('base_de_donnees', instance.base_de_donnees)
+
+            else :
+                # On a un select de la BD et non un upload
+                # TODO : récuperer la base de données grace à son nom et l'utilisateur qui l'avait uploadé : query on Diagnostic -> base_de_donnees & utilisateur
+                pass
+
+
+        instance.save()
+
+        return instance
+    
+
+class MetaTableSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = MetaTable
+        fields = '__all__'
+
+
+class MetaSpecialCarSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = MetaSpecialCar
+        fields = '__all__'
+
+
+class MetaTousContraintesSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = MetaTousContraintes
+        fields = '__all__'
+
+
+class MetaColonneSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = MetaColonne
+        fields = '__all__'
