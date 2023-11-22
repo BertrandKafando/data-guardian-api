@@ -150,12 +150,12 @@ class BaseDeDonneesViewSet(ModelViewSet):
     def get_queryset(self):
 
         base_de_donnees = self.request.query_params.get('base_de_donnees')
+        queryset = BaseDeDonnees.objects.all()
 
         if base_de_donnees:
             
-            queryset = BaseDeDonnees.objects.filter(nom_base_de_donnees__icontains=base_de_donnees)
-
-            return queryset
+            queryset = queryset.filter(nom_base_de_donnees__icontains=base_de_donnees)
+        
 
         return queryset
 
@@ -176,8 +176,7 @@ class BaseDeDonneesViewSet(ModelViewSet):
     
 
 
-class DiagnosticViewSet(ModelViewSet):
-    serializer_class= DiagnosticSerializer
+class DiagnosticViewSet(APIView):
 
     # def get_permissions(self):
     #     if self.request.method == "GET":
@@ -191,7 +190,7 @@ class DiagnosticViewSet(ModelViewSet):
     #     return [permission() for permission in self.permission_classes]
 
 
-    def get_queryset(self):
+    def get(self, request):
 
         user = self.request.user
         print(user)
@@ -207,9 +206,40 @@ class DiagnosticViewSet(ModelViewSet):
 
             queryset = Diagnostic.objects.all()
 
+        serializer = DiagnosticSerializer(queryset , many=True)
+        response_data = serializer.data
 
-        return queryset
-    
+        return Response(response_data,status=status.HTTP_200_OK)
+        
+
+    def post(self, request, *args, **kwargs):
+
+        diagnostic_serializer=DiagnosticSerializer(data=request.data)
+
+        if not diagnostic_serializer.is_valid():
+            return Response({'detail': 'Données invalides'}, status = status.HTTP_400_BAD_REQUEST)
+        
+        base_de_donnees_data = diagnostic_serializer.data.pop('base_de_donnees', None)
+
+        if base_de_donnees_data :
+            if base_de_donnees_data.get("fichier_bd", None) :
+                base_de_donnees_serializer = BaseDeDonneesSerializer(data=base_de_donnees_data)
+                base_de_donnees_serializer.is_valid(raise_exception=True)
+                base_de_donnees = base_de_donnees_serializer.save()
+            else : 
+                # On a un select de la BD et non un upload
+                # TODO : récuperer la base de données grace à son nom et l'utilisateur qui l'avait uploadé : query on Diagnostic -> base_de_donnees & utilisateur
+                pass
+
+        diagnostic = Diagnostic.objects.create(base_de_donnees=base_de_donnees, **diagnostic_serializer.data)
+
+        # TODO convertir le fichier en Dataframe et exécuter les procédures et fonctions stockées : créer une fonction run diagnostic
+
+        return Response({
+            "diagnostic" : diagnostic,
+        }, status=status.HTTP_200_OK)
+ 
+
 
 class MetaTableViewSet(ModelViewSet):
     serializer_class= MetaTableSerializer
