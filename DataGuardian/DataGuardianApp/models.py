@@ -159,7 +159,7 @@ class Diagnostic(models.Model):
         choices=CHOIX_STATUS
     )
     Utilisateur = models.ForeignKey(Utilisateur,related_name="diagnostic", on_delete=models.CASCADE, null=True, blank=True)
-    criteres = models.ManyToManyField(Critere, related_name='diagnostic', symmetrical=False, null=True, blank=True)
+    criteres = models.ManyToManyField(Critere, related_name='diagnostic', symmetrical=False, blank=True)
     base_de_donnees = models.ForeignKey(BaseDeDonnees,related_name="diagnostic", on_delete=models.CASCADE, null=True, blank=True)
     
 
@@ -217,7 +217,7 @@ class MetaColonne(models.Model):
     col_max = models.CharField(max_length=100, null=True, blank=True)
     meta_table = models.ForeignKey(MetaTable,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
     meta_special_car = models.ForeignKey(MetaSpecialCar,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
-    contraintes = models.ManyToManyField(MetaTousContraintes, related_name='meta_colonne', symmetrical=False, null=True, blank=True)
+    contraintes = models.ManyToManyField(MetaTousContraintes, related_name='meta_colonne', symmetrical=False, blank=True)
 
     def __str__(self):
         return self.nom_colonne
