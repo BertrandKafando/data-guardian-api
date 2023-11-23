@@ -64,6 +64,13 @@ class CompteViewSet(ModelViewSet):
     def get_queryset(self):
         queryset= Compte.objects.all()
         return queryset
+    
+    def destroy(self, request, *args, **kwargs):
+
+        compte = self.get_object()
+        User.objects.get(username=compte.identifiant).delete()
+        compte.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT) 
 
 
 class UtilisateurViewSet(ModelViewSet):
@@ -233,7 +240,7 @@ class DiagnosticViewSet(APIView):
 
         diagnostic = Diagnostic.objects.create(base_de_donnees=base_de_donnees, **diagnostic_serializer.data)
 
-        # TODO convertir le fichier en Dataframe et exécuter les procédures et fonctions stockées : créer une fonction run diagnostic
+        # TODO convertir le fichier en Dataframe et créer la table à partir du Dataframe exécuter les procédures et fonctions stockées : créer une fonction run diagnostic
 
         return Response({
             "diagnostic" : diagnostic,
@@ -323,3 +330,69 @@ class MetaColonneViewSet(ModelViewSet):
 
         queryset = MetaColonne.objects.all()
         return queryset
+    
+
+class LoginView(APIView):
+
+    serializer_class= CompteSerializer
+    http_method_names = ["post","head"]
+
+    def post(self, request, *args, **kwargs):
+
+        authentication_serializer=CompteSerializer(data=request.data)
+
+        if not authentication_serializer.is_valid():
+            return Response({'detail': 'Données invalides'}, status = status.HTTP_400_BAD_REQUEST)
+
+        user_instance = Utilisateur.objects.filter(compte__identifiant=authentication_serializer.data.get("identifiant")).first()
+
+
+        user = authenticate(
+            username = authentication_serializer.data.get("identifiant"),
+            password = authentication_serializer.data.get("mot_de_passe")
+        )
+
+        if not user:
+            return Response({'detail': 'informations de connexion invalides.'}, status=status.HTTP_404_NOT_FOUND)
+        
+        login(request, user)
+
+
+        #TOKEN
+        token, _ = Token.objects.get_or_create(user = user)
+
+        #token_expire_handler will check, if the token is expired it will generate new one
+        is_expired, token = token_expire_handler(token)   
+        user_serialized = UtilisateurSerializer(user_instance)
+        permission=list(user.get_all_permissions())[0]
+        user_instance_data = user_serialized.data
+        user_instance_data["identifiant"]=authentication_serializer.data.get("identifiant")
+        user_instance_data.pop('compte',None)
+        user_instance_data.pop('email',None)
+        user_instance_data.pop('telephone',None)
+
+        return Response({
+            'user': user_instance_data, 
+            'expires_in': expires_in(token),
+            'created_at': token.created,
+            'is_expired': is_expired,
+            'token': token.key,
+            'userType':permission.split(".")[1]
+        }, status=status.HTTP_200_OK)
+
+
+class LogoutView(APIView):
+    http_method_names = ["head","post"]
+
+
+    # def get_permissions(self):
+    #     if self.request.method == "POST":
+    #         self.permission_classes = [IsAuthenticated]
+
+
+    def post(self, request, *args, **kwargs):
+
+        Token.objects.filter(user=request.user).delete()
+        logout(request)
+
+        return Response({'detail':'utilisateur deconnecté'},status=status.HTTP_200_OK)

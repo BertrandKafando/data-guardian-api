@@ -20,7 +20,7 @@ class RoleSerializer(serializers.ModelSerializer):
     
     class Meta:
         model=Role
-        fields=["nom_role"]
+        fields=["nom_role","creation", "modification"]
 
 class CompteSerializer(serializers.ModelSerializer):
 
@@ -30,10 +30,10 @@ class CompteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model=Compte
-        fields='__all__'
-        #extra_kwargs = {
-        #    'identifiant': {'validators': []}
-        #}
+        fields=["identifiant","mot_de_passe"]
+        extra_kwargs = {
+            'identifiant': {'validators': []}
+        }
 
     def create(self, validated_data):
         
@@ -58,15 +58,25 @@ class CompteSerializer(serializers.ModelSerializer):
         if validated_data.get("identifiant")!=instance.identifiant and Compte.objects.filter(identifiant=validated_data.get("identifiant")).exists():
             raise serializers.ValidationError("Ce compte existe déja")
 
-        user=User.objects.filter(username=instance.identifiant).first()
+        user=User.objects.filter(username = instance.identifiant).first()
+        compte_model=Compte.objects.filter(identifiant = instance.identifiant).first()
 
         if user :
-            if 'mot_de_passe' in validated_data:
-                user.set_password(validated_data.get("mot_de_passe", validated_data.get('mot_de_passe')))
+
+            if 'mot_de_passe' in validated_data :
+
+                if validated_data.get("mot_de_passe", None) != compte_model.mot_de_passe :
+                    user.set_password(validated_data.get("mot_de_passe", None))
+                    compte_model.mot_de_passe = make_password(validated_data.get("mot_de_passe"))
             
-            if 'identifiant' in validated_data:
-                user.username=validated_data.get("identifiant", validated_data.get('identifiant'))
+            if 'identifiant' in validated_data :
+
+                user.username = validated_data.get("identifiant", compte_model.identifiant)
+                compte_model.identifiant = validated_data.get("identifiant", compte_model.identifiant)
+                
             user.save()
+            compte_model.save()
+
         else :
             raise NotFound("cet utilisateur n\'existe pas!")
 
@@ -234,29 +244,6 @@ class DiagnosticSerializer(serializers.Serializer):
         fields='__all__'
 
 
-    # TODO : move to APIView on api.py
-
-    def create(self, validated_data):
-
-        base_de_donnees_data = validated_data.pop('base_de_donnees', None)
-
-        if base_de_donnees_data :
-            if base_de_donnees_data.get("fichier_bd", None) :
-                base_de_donnees_serializer = BaseDeDonneesSerializer(data=base_de_donnees_data)
-                base_de_donnees_serializer.is_valid(raise_exception=True)
-                base_de_donnees = base_de_donnees_serializer.save()
-            else : 
-                # On a un select de la BD et non un upload
-                # TODO : récuperer la base de données grace à son nom et l'utilisateur qui l'avait uploadé : query on Diagnostic -> base_de_donnees & utilisateur
-                pass
-
-        diagnostic = Diagnostic.objects.create(base_de_donnees=base_de_donnees, **validated_data)
-
-        # TODO convertir le fichier en Dataframe et exécuter les procédures et fonctions stockées : créer une fonction run diagnostic
-
-        return diagnostic
-    
-
     def update(self, instance, validated_data):
 
         instance.criteres.set(validated_data.get('criteres', instance.criteres.all()))
@@ -305,3 +292,4 @@ class MetaColonneSerializer(serializers.ModelSerializer):
     class Meta:
         model = MetaColonne
         fields = '__all__'
+
