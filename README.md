@@ -65,9 +65,11 @@ This file contains the global variables required for project configuration. Make
 
 If you want to run the project locally without Docker, follow these additional steps:
 
-1. Ensure you have a running Postgres server. You can use Docker to start one, for example:
+1. Ensure you have a running Postgres server running (use **psql** command to connect ):
 
-    ```docker run -p 5432:5432 -it --name postgres postgres```
+    ```CREATE USER <USERNAME> WITH PASSWORD ‘PASSWORD’;```
+    ```CREATE DATABASE <DB_NAME>;```
+    ```GRANT ALL PRIVILEGES ON DATABASE <DB_NAME> TO <USERNAME>;```
 
 2. Create a Python virtual environment and activate it:
 

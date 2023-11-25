@@ -21,7 +21,6 @@ from django.db import transaction
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
-#aaaaa
 
 env = environ.Env()
 environ.Env.read_env()
