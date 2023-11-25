@@ -5,6 +5,7 @@ from django.contrib.contenttypes.models import ContentType
 from rest_framework.exceptions import  NotFound
 from drf_extra_fields.fields import Base64ImageField
 import base64
+import pandas as pd
 import os
 import pytz
 from django.utils import timezone
@@ -15,13 +16,17 @@ from uuid import uuid4
 
 utc = pytz.UTC
 now = timezone.now()
+BASE_DIR = settings.BASE_DIR
 
+
+#ok
 class RoleSerializer(serializers.ModelSerializer):
     
     class Meta:
         model=Role
         fields=["nom_role","creation", "modification"]
 
+#ok
 class CompteSerializer(serializers.ModelSerializer):
 
     mot_de_passe=serializers.CharField(
@@ -83,7 +88,7 @@ class CompteSerializer(serializers.ModelSerializer):
         return super(CompteSerializer, self).update(instance,validated_data)
     
 
-
+#ok
 class UtilisateurSerializer(serializers.ModelSerializer):
     
     compte = CompteSerializer(required=False)
@@ -188,12 +193,12 @@ class UtilisateurSerializer(serializers.ModelSerializer):
         return super(UtilisateurSerializer,self).update(instance, validated_data)
 
 
-
+#ok
 class CritereSerializer(serializers.ModelSerializer):
     
     class Meta:
         model=Critere
-        fields=["nom_critere"]
+        fields=["nom_critere", "expression"]
 
 
 class BaseDeDonneesSerializer(serializers.ModelSerializer):
@@ -204,11 +209,12 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
 
         fichier = validated_data.pop('fichier_bd', None)
+
         if fichier : 
             validated_data['nom_fichier'] = fichier.name
-            validated_data['taille_fichier'] = fichier.size / (1024 * 1024)
+            validated_data['taille_fichier'] = str(round(fichier.size / (1024 * 1024), 6)) + "MB"
 
-        base_de_donnees = BaseDeDonnees.objects.create(**validated_data)
+        base_de_donnees = BaseDeDonnees.objects.create(fichier_bd = fichier, **validated_data)
         return base_de_donnees
     
 
@@ -218,7 +224,7 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
 
         if fichier:
             validated_data['nom_fichier'] = fichier.name
-            validated_data['taille_fichier'] = fichier.size / (1024 * 1024) 
+            validated_data['taille_fichier'] = str(round(fichier.size / (1024 * 1024), 6)) + "MB"
 
         instance.nom_base_de_donnees = validated_data.get('nom_base_de_donnees', instance.nom_base_de_donnees)
         instance.descriptif = validated_data.get('descriptif', instance.descriptif)

@@ -106,6 +106,9 @@ class UtilisateurViewSet(ModelViewSet):
 
             queryset= Utilisateur.objects.all().exclude(role__nom_role='Administrateur')
 
+        # TODO :remove this following line it's just for test
+        queryset= Utilisateur.objects.all()
+
         return queryset
 
 

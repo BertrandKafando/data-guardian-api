@@ -71,7 +71,7 @@ class Critere(models.Model):
     expression = models.CharField(max_length=500)
 
     def __str__(self):
-        return str(self.prenom)
+        return str(self.nom_critere)
 
     __repr__=__str__
 
@@ -119,8 +119,8 @@ class BaseDeDonnees(models.Model):
     date_mise_a_jour = models.DateTimeField(default=datetime.datetime.now)
     descriptif = models.TextField(null=True, blank=True)
     type_fichier = models.CharField(max_length=100, choices=CHOIX_FICHIER)
-    nom_fichier = models.CharField(max_length=100)
-    taille_fichier = models.CharField(max_length=100)
+    nom_fichier = models.CharField(max_length=100, blank=True)
+    taille_fichier = models.CharField(max_length=100, blank=True)
     format_fichier = models.CharField(max_length=100, choices=CHOIX_FORMAT_FICHIER)
     separateur = models.CharField(max_length=100, choices=CHOIX_SEPARATEUR_FICHIER)
     avec_entete = models.BooleanField(default=True)
@@ -197,6 +197,7 @@ class MetaTousContraintes(models.Model):
 
     def __str__(self):
         return self.nom_contrainte
+    
 
 class MetaColonne(models.Model):
     
