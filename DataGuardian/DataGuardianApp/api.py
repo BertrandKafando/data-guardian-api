@@ -18,6 +18,8 @@ from django.conf import settings
 import environ
 import json
 from django.db import transaction
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
 #aaaaa
 
@@ -142,6 +144,9 @@ class CritereViewSet(ModelViewSet):
         return queryset
     
 
+fichier_bd = openapi.Parameter('fichier_bd', in_=openapi.IN_QUERY,
+                           type=openapi.TYPE_FILE, description="Fichier de la base de données")
+
 class BaseDeDonneesViewSet(ModelViewSet):
     serializer_class= BaseDeDonneesSerializer
 
@@ -157,6 +162,9 @@ class BaseDeDonneesViewSet(ModelViewSet):
     #     return [permission() for permission in self.permission_classes]
 
 
+    @swagger_auto_schema(
+        manual_parameters=[fichier_bd],
+    )
     def get_queryset(self):
 
         base_de_donnees = self.request.query_params.get('base_de_donnees')
@@ -164,8 +172,7 @@ class BaseDeDonneesViewSet(ModelViewSet):
 
         if base_de_donnees:
             
-            queryset = queryset.filter(nom_base_de_donnees__icontains=base_de_donnees)
-        
+            queryset = queryset.filter(nom_base_de_donnees__icontains=base_de_donnees)        
 
         return queryset
 

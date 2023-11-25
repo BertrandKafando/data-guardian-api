@@ -125,7 +125,7 @@ class BaseDeDonnees(models.Model):
     separateur = models.CharField(max_length=100, choices=CHOIX_SEPARATEUR_FICHIER)
     avec_entete = models.BooleanField(default=True)
     fichier_bd = models.FileField(
-            upload_to='media/uploaded_db/',
+            upload_to='uploaded_db/',
             validators=[
                 FileExtensionValidator(
                     allowed_extensions=["xlsx", "xls", "csv", "sql", "txt", "json", "xml"]

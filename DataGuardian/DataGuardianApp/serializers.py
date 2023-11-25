@@ -14,6 +14,7 @@ from django.core.files.base import ContentFile
 from uuid import uuid4
 
 
+
 utc = pytz.UTC
 now = timezone.now()
 BASE_DIR = settings.BASE_DIR
@@ -201,10 +202,12 @@ class CritereSerializer(serializers.ModelSerializer):
         fields=["nom_critere", "expression"]
 
 
+
 class BaseDeDonneesSerializer(serializers.ModelSerializer):
     class Meta:
         model = BaseDeDonnees
         fields = '__all__'
+
 
     def create(self, validated_data):
 
