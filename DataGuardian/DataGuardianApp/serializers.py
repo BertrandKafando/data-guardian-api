@@ -199,7 +199,7 @@ class CritereSerializer(serializers.ModelSerializer):
     
     class Meta:
         model=Critere
-        fields=["nom_critere", "expression"]
+        fields=["parametre_diagnostic"]
 
 
 
@@ -245,7 +245,7 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
 
 class DiagnosticSerializer(serializers.Serializer):
 
-    utilisateur = UtilisateurSerializer(required=False)
+    utilisateur = serializers.CharField(required=False)
     criteres = CritereSerializer(many=True, required=False)
     base_de_donnees = BaseDeDonneesSerializer(required=False)
 
@@ -282,10 +282,10 @@ class MetaTableSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class MetaSpecialCarSerializer(serializers.ModelSerializer):
+class MetaAnomalieSerializer(serializers.ModelSerializer):
 
     class Meta:
-        model = MetaSpecialCar
+        model = MetaAnomalie
         fields = '__all__'
 
 

@@ -1,5 +1,5 @@
 from django.core.mail import EmailMessage
-
+from django.db import connection
 import base64
 import threading
 
@@ -36,3 +36,26 @@ class Base64 :
                 return base64.b64encode(base64.b64decode(sb_bytes)) == sb_bytes
             except Exception:
                 return False
+            
+
+class DBFunctions:
+
+
+    def executer_fonction_postgresql(nom_fonction, *args):
+
+        with connection.cursor() as cursor:
+
+            try:
+
+                params = ', '.join('%s' for _ in args)
+                
+                cursor.execute(f"SELECT {nom_fonction}({params});", args)
+                
+                result = cursor.fetchone()
+                
+                return result
+            
+            except Exception as e:
+
+                print(f"Erreur lors de l'exécution de la fonction {nom_fonction}: {e}")
+                return -1

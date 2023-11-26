@@ -67,11 +67,24 @@ class Utilisateur(models.Model):
 
 class Critere(models.Model):
 
-    nom_critere = models.CharField(max_length=100)
-    expression = models.CharField(max_length=500)
+    VAL_MANQ = 'VAL_MANQ'
+    VAL_MANQ_CONTRAINTS = 'VAL_MANQ_CONTRAINTS'
+    VAL_MANQ_CONTRAINTS_FN = 'VAL_MANQ_CONTRAINTS_FN'
+    VAL_MANQ_CONTRAINTS_FN_DUPLICATIONS = 'VAL_MANQ_CONTRAINTS_FN_DUPLICATIONS'
+    ALL = 'ALL'
+
+    CHOIX_PARAMETRE = [
+        (VAL_MANQ, 'VAL_MANQ'),
+        (VAL_MANQ_CONTRAINTS, 'VAL_MANQ_CONTRAINTS'),
+        (VAL_MANQ_CONTRAINTS_FN, 'VAL_MANQ_CONTRAINTS_FN'),
+        (VAL_MANQ_CONTRAINTS_FN_DUPLICATIONS, 'VAL_MANQ_CONTRAINTS_FN_DUPLICATIONS'),
+        (ALL, 'ALL'),
+    ]
+
+    parametre_diagnostic = models.CharField(max_length=100, choices=CHOIX_PARAMETRE)
 
     def __str__(self):
-        return str(self.nom_critere)
+        return str(self.parametre_diagnostic)
 
     __repr__=__str__
 
@@ -159,7 +172,7 @@ class Diagnostic(models.Model):
         choices=CHOIX_STATUS
     )
     Utilisateur = models.ForeignKey(Utilisateur,related_name="diagnostic", on_delete=models.CASCADE, null=True, blank=True)
-    criteres = models.ManyToManyField(Critere, related_name='diagnostic', symmetrical=False, blank=True)
+    parametre_diagnostic = models.ForeignKey(Critere, related_name='diagnostic', on_delete=models.CASCADE, blank=True)
     base_de_donnees = models.ForeignKey(BaseDeDonnees,related_name="diagnostic", on_delete=models.CASCADE, null=True, blank=True)
     
 
@@ -182,21 +195,29 @@ class MetaTable(models.Model):
         return self.nom_table
 
 
-class MetaSpecialCar(models.Model):
+# class MetaSpecialCar(models.Model):
 
-    caracteres_speciaux = models.CharField(max_length=500)
+#     caracteres_speciaux = models.CharField(max_length=500)
 
-    def __str__(self):
-        return self.caracteres_speciaux
+#     def __str__(self):
+#         return self.caracteres_speciaux
     
 class MetaTousContraintes(models.Model):
-    nom_contrainte = models.CharField(max_length=50)
+    nom_contrainte = models.CharField(max_length=100)
     category = models.CharField(max_length=300, null=True, blank=True)
     contrainte = models.CharField(max_length=500, null=True, blank=True)
     commentaire = models.CharField(max_length=300, null=True, blank=True)
 
     def __str__(self):
         return self.nom_contrainte
+    
+
+class MetaAnomalie(models.Model):
+    nom_anomalie = models.CharField(max_length=50)
+    valeur_trouvee = models.CharField(max_length=300, null=True, blank=True)
+
+    def __str__(self):
+        return self.nom_anomalie
     
 
 class MetaColonne(models.Model):
@@ -217,7 +238,8 @@ class MetaColonne(models.Model):
     col_min = models.CharField(max_length=100, null=True, blank=True)
     col_max = models.CharField(max_length=100, null=True, blank=True)
     meta_table = models.ForeignKey(MetaTable,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
-    meta_special_car = models.ForeignKey(MetaSpecialCar,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
+    #meta_special_car = models.ForeignKey(MetaSpecialCar,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
+    meta_anomalie = models.ForeignKey(MetaAnomalie,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
     contraintes = models.ManyToManyField(MetaTousContraintes, related_name='meta_colonne', symmetrical=False, blank=True)
 
     def __str__(self):

@@ -21,17 +21,17 @@ class DataguardianappConfig(AppConfig):
         post_migrate.connect(run_sql_scripts, sender=self)
 
 
-
-
 @receiver(post_migrate)
 def run_sql_scripts(sender, **kwargs):
 
     print("Exécution des scripts SQL pour la création des fonctions et procédures...")
-    script_path = os.path.join(BASE_DIR, "DataGuardian/DataGuardianApp/db_configs/functions.sql")
-    print(script_path)
+    functions_script_path = os.path.join(BASE_DIR, "DataGuardian/DataGuardianApp/db_configs/functions.sql")
+    test_data_script_path = os.path.join(BASE_DIR, "DataGuardian/DataGuardianApp/db_configs/test_data.sql")
 
     try:
-        subprocess.run(['psql', '-U', env("POSTGRES_USER"), '-d', env("POSTGRES_DB"), '-a', '-f', script_path])
+        subprocess.run(['psql', '-U', env("POSTGRES_USER"), '-d', env("POSTGRES_DB"), '-a', '-f', functions_script_path])
         print("Scripts SQL exécutés avec succès.")
+        subprocess.run(['psql', '-U', env("POSTGRES_USER"), '-d', env("POSTGRES_DB"), '-a', '-f', test_data_script_path])
+        print("Création des données de test réalisé avec succès.")
     except Exception as e:
         print(f"Erreur lors de l'exécution des scripts SQL : {e}")

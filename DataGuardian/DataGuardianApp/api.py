@@ -8,7 +8,7 @@ from .permissions import *
 from django.contrib.auth import authenticate, login
 from .authentication import *
 from django.contrib.auth import logout
-from .utils import Base64
+from .utils import Base64, DBFunctions
 import os
 from django.core.files.base import ContentFile
 from rest_framework.views import APIView
@@ -194,21 +194,23 @@ class BaseDeDonneesViewSet(ModelViewSet):
 
 class DiagnosticViewSet(APIView):
 
-    # def get_permissions(self):
-    #     if self.request.method == "GET":
-    #         self.permission_classes = [IsCustomerAuthenticated | IsAdminAuthenticated]
-    #     elif self.request.method == "POST":
-    #         self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
-    #     elif self.request.method == "PUT" or self.request.method == "PATCH":
-    #         self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
-    #     elif self.request.method == "DELETE":
-    #         self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
-    #     return [permission() for permission in self.permission_classes]
+    def get_permissions(self):
+        if self.request.method == "GET":
+            self.permission_classes = [IsCustomerAuthenticated | IsAdminAuthenticated ]
+        elif self.request.method == "POST":
+            self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
+        elif self.request.method == "PUT" or self.request.method == "PATCH":
+            self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
+        elif self.request.method == "DELETE":
+            self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
+        return [permission() for permission in self.permission_classes]
+
+    serializer_class = DiagnosticSerializer 
 
 
     def get(self, request):
 
-        user = self.request.user
+        user = request.user
         print(user)
         current_user = Utilisateur.objects.filter(
             compte__identifiant=user.username
@@ -228,13 +230,32 @@ class DiagnosticViewSet(APIView):
         return Response(response_data,status=status.HTTP_200_OK)
         
 
+    @swagger_auto_schema(request_body=DiagnosticSerializer)
     def post(self, request, *args, **kwargs):
+
+
+        result_nb_rows = DBFunctions.executer_fonction_postgresql('NombreDeLignes', 'Clients')
+        result_nb_nulls = DBFunctions.executer_fonction_postgresql('NombreDeNULLs','Clients','ADNCLI')
+        print(result_nb_rows)
+        print(result_nb_nulls)
+
+
+
+
+        print(request.data)
 
         diagnostic_serializer=DiagnosticSerializer(data=request.data)
 
         if not diagnostic_serializer.is_valid():
             return Response({'detail': 'Données invalides'}, status = status.HTTP_400_BAD_REQUEST)
         
+        print(diagnostic_serializer.data)
+        
+        user = request.user
+        utilisateur = Utilisateur.objects.filter(
+            compte__identifiant=user.username
+        ).first()
+
         base_de_donnees_data = diagnostic_serializer.data.pop('base_de_donnees', None)
 
         if base_de_donnees_data :
@@ -247,13 +268,38 @@ class DiagnosticViewSet(APIView):
                 # TODO : récuperer la base de données grace à son nom et l'utilisateur qui l'avait uploadé : query on Diagnostic -> base_de_donnees & utilisateur
                 pass
 
-        diagnostic = Diagnostic.objects.create(base_de_donnees=base_de_donnees, **diagnostic_serializer.data)
 
-        # TODO convertir le fichier en Dataframe et créer la table à partir du Dataframe exécuter les procédures et fonctions stockées : créer une fonction run diagnostic
+            if 'utilisateur' in diagnostic_serializer.data :
+                utilisateur =  Utilisateur.objects.filter(compte__identifiant=diagnostic_serializer.data.pop("utilisateur")).first()
+            else :
+                utilisateur = utilisateur.compte.identifiant
+
+            diagnostic = Diagnostic.objects.create(
+                base_de_donnees=base_de_donnees,
+                utilisateur=utilisateur, 
+                **diagnostic_serializer.data
+            )
+
+            # TODO : créer les objets criteres et les ajouter à l'objet diagnostic
+            criteres = diagnostic_serializer.data.pop("criteres")
+
+            #for critere_elt in criteres :
+                #print(critere_elt)
+                # get or create a new instance of critere named critere
+                #diagnostic.criteres.add(critere)
+                #diagnostic.save()
+
+            # TODO convertir le fichier en Dataframe et créer la table à partir du Dataframe exécuter les procédures et fonctions stockées : créer une fonction run diagnostic
+
+            # ICI je teste avec la table client créée pour cela
+
+        result_nb_rows = DBFunctions.executer_fonction_postgresql('NombreDeLignes', 'Clients')
+        print(result_nb_rows)
+
 
         return Response({
-            "diagnostic" : diagnostic,
-        }, status=status.HTTP_200_OK)
+                "diagnostic" : diagnostic,
+            }, status=status.HTTP_200_OK)
  
 
 
@@ -278,8 +324,8 @@ class MetaTableViewSet(ModelViewSet):
         return queryset
     
 
-class MetaSpecialCarViewSet(ModelViewSet):
-    serializer_class= MetaSpecialCarSerializer
+class MetaAnomalieViewSet(ModelViewSet):
+    serializer_class= MetaAnomalieSerializer
 
     # def get_permissions(self):
     #     if self.request.method == "GET":
@@ -295,7 +341,7 @@ class MetaSpecialCarViewSet(ModelViewSet):
 
     def get_queryset(self):
 
-        queryset = MetaSpecialCar.objects.all()
+        queryset = MetaAnomalie.objects.all()
         return queryset
     
 
