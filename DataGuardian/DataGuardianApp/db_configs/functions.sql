@@ -676,3 +676,38 @@ EXCEPTION
         RETURN 0;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION count_values_not_matching_regex(p_table_name VARCHAR, p_column_name VARCHAR, p_regex VARCHAR) RETURNS INTEGER AS
+$$
+DECLARE
+    v_sql_query VARCHAR(1000);
+    v_cursor REFCURSOR;
+    v_column_value VARCHAR(4000);
+    v_count INTEGER := 0;
+BEGIN
+    -- Build the SQL query to select column values
+    v_sql_query := 'SELECT ' || p_column_name || ' FROM ' || p_table_name;
+
+    -- Open the cursor
+    OPEN v_cursor FOR EXECUTE v_sql_query;
+
+    -- Loop through column values
+    LOOP
+        FETCH v_cursor INTO v_column_value;
+        EXIT WHEN NOT FOUND;
+
+        v_column_value := COALESCE(v_column_value, '');
+
+        -- Check if the value does not match the regular expression
+        IF v_column_value !~ p_regex THEN
+            -- Increment the counter
+            v_count := v_count + 1;
+        END IF;
+    END LOOP;
+
+    -- Close the cursor
+    CLOSE v_cursor;
+
+    RETURN v_count;
+END;
+$$ LANGUAGE plpgsql;

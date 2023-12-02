@@ -21,6 +21,7 @@ router.register(r'meta-colonne', MetaColonneViewSet, basename='Meta-colonne')
 
 
 
+
 schema_view = get_schema_view(
     openapi.Info(
         title="Data Guardian : API ",
@@ -36,6 +37,6 @@ urlpatterns = [
     url(r'^$', schema_view.with_ui('swagger', cache_timeout=0), name='documentation'),
     url(r'^api/diagnostic/$', DiagnosticViewSet.as_view(), name='diagnostic'),
     url(r'^api/authenticate/$', LoginView.as_view(), name='login'),
-    url(r'^api/logout/$', LogoutView.as_view(), name='logout')
-
+    url(r'^api/logout/$', LogoutView.as_view(), name='logout'),
+    url(r'^api/semantic/$', SemanticInferenceView.as_view(), name='semantic')
 ]

@@ -264,6 +264,7 @@ class DiagnosticViewSet(APIView):
                 base_de_donnees_serializer.is_valid(raise_exception=True)
                 base_de_donnees = base_de_donnees_serializer.save()
             else : 
+                
                 # On a un select de la BD et non un upload
                 # TODO : récuperer la base de données grace à son nom et l'utilisateur qui l'avait uploadé : query on Diagnostic -> base_de_donnees & utilisateur
                 pass
@@ -451,3 +452,20 @@ class LogoutView(APIView):
         logout(request)
 
         return Response({'detail':'utilisateur deconnecté'},status=status.HTTP_200_OK)
+
+
+class SemanticInferenceView(APIView):
+
+    http_method_names = ["head","post"]
+
+
+
+    def post(self, request, *args, **kwargs):
+
+        # call the function here
+
+        return Response(
+            {
+            'detail':'utilisateur deconnecté'
+            },
+            status=status.HTTP_200_OK)
