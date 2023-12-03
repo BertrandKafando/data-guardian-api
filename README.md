@@ -71,6 +71,8 @@ If you want to run the project locally without Docker, follow these additional s
     ```CREATE DATABASE <DB_NAME>;```
     ```GRANT ALL PRIVILEGES ON DATABASE <DB_NAME> TO <USERNAME>;```
 
+> MAC
+
 2. Create a Python virtual environment and activate it:
 
     ```
@@ -93,6 +95,33 @@ If you want to run the project locally without Docker, follow these additional s
 5. Start the development server:
 
     ```python3 DataGuardian/manage.py runserver```
+
+
+
+    > WINDOWs
+
+2. Create a Python virtual environment and activate it:
+
+    ```
+    python -m venv env
+    source env/bin/activate
+    ```
+
+3. Install the dependencies:
+
+    ```pip install -r requirements.txt```
+
+
+4. Perform the database migrations:
+
+    ```
+    python DataGuardian/manage.py makemigrations
+    python DataGuardian/manage.py migrate
+    ```
+
+5. Start the development server:
+
+    ```python DataGuardian/manage.py runserver```
 
 
 The server should be accessible at http://localhost:8000.
