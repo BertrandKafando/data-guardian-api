@@ -6,9 +6,9 @@ django-filter==21.1
 djangorestframework==3.13.1
 drf-extra-fields==3.4.0
 drf-yasg==1.20.0
-en-core-web-md==3.7.0
-fr-core-news-md==3.7.0
 pandas==1.5.3
 psycopg2==2.9.5
 spacy==3.7.2
+https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.7.0/en_core_web_md-3.7.0.tar.gz#egg=en_core_web_md==3.7.0
+https://github.com/explosion/spacy-models/releases/download/fr_core_news_md-3.7.0/fr_core_news_md-3.7.0.tar.gz#egg=fr_core_news_md==3.7.0
 SQLAlchemy==2.0.23
