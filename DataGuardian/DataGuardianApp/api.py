@@ -13,7 +13,6 @@ import os
 from django.core.files.base import ContentFile
 from rest_framework.views import APIView
 from django.db.models import Q
-import pandas as pd
 from django.conf import settings
 import environ
 import json
