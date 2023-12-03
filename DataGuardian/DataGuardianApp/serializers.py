@@ -5,6 +5,7 @@ from django.contrib.contenttypes.models import ContentType
 from rest_framework.exceptions import  NotFound
 from drf_extra_fields.fields import Base64ImageField
 import base64
+import pandas as pd
 import os
 import pytz
 from django.utils import timezone
@@ -13,15 +14,20 @@ from django.core.files.base import ContentFile
 from uuid import uuid4
 
 
+
 utc = pytz.UTC
 now = timezone.now()
+BASE_DIR = settings.BASE_DIR
 
+
+#ok
 class RoleSerializer(serializers.ModelSerializer):
     
     class Meta:
         model=Role
         fields=["nom_role","creation", "modification"]
 
+#ok
 class CompteSerializer(serializers.ModelSerializer):
 
     mot_de_passe=serializers.CharField(
@@ -83,7 +89,7 @@ class CompteSerializer(serializers.ModelSerializer):
         return super(CompteSerializer, self).update(instance,validated_data)
     
 
-
+#ok
 class UtilisateurSerializer(serializers.ModelSerializer):
     
     compte = CompteSerializer(required=False)
@@ -188,12 +194,13 @@ class UtilisateurSerializer(serializers.ModelSerializer):
         return super(UtilisateurSerializer,self).update(instance, validated_data)
 
 
-
+#ok
 class CritereSerializer(serializers.ModelSerializer):
     
     class Meta:
         model=Critere
-        fields=["nom_critere"]
+        fields=["parametre_diagnostic"]
+
 
 
 class BaseDeDonneesSerializer(serializers.ModelSerializer):
@@ -201,24 +208,28 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
         model = BaseDeDonnees
         fields = '__all__'
 
+
     def create(self, validated_data):
 
         fichier = validated_data.pop('fichier_bd', None)
+        print("validated_data")
+
         if fichier : 
             validated_data['nom_fichier'] = fichier.name
-            validated_data['taille_fichier'] = fichier.size / (1024 * 1024)
+            validated_data['taille_fichier'] = str(round(fichier.size / (1024 * 1024), 6)) + "MB"
 
-        base_de_donnees = BaseDeDonnees.objects.create(**validated_data)
+        base_de_donnees = BaseDeDonnees.objects.create( **validated_data)
         return base_de_donnees
     
 
     def update(self, instance, validated_data):
-
+        
+        print("validated_data")
         fichier = validated_data.pop('fichier_bd', None)
-
+         
         if fichier:
             validated_data['nom_fichier'] = fichier.name
-            validated_data['taille_fichier'] = fichier.size / (1024 * 1024) 
+            validated_data['taille_fichier'] = str(round(fichier.size / (1024 * 1024), 6)) + "MB"
 
         instance.nom_base_de_donnees = validated_data.get('nom_base_de_donnees', instance.nom_base_de_donnees)
         instance.descriptif = validated_data.get('descriptif', instance.descriptif)
@@ -236,7 +247,7 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
 
 class DiagnosticSerializer(serializers.Serializer):
 
-    utilisateur = UtilisateurSerializer(required=False)
+    utilisateur = serializers.CharField(required=False)
     criteres = CritereSerializer(many=True, required=False)
     base_de_donnees = BaseDeDonneesSerializer(required=False)
 
@@ -273,10 +284,10 @@ class MetaTableSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class MetaSpecialCarSerializer(serializers.ModelSerializer):
+class MetaAnomalieSerializer(serializers.ModelSerializer):
 
     class Meta:
-        model = MetaSpecialCar
+        model = MetaAnomalie
         fields = '__all__'
 
 
@@ -292,4 +303,11 @@ class MetaColonneSerializer(serializers.ModelSerializer):
     class Meta:
         model = MetaColonne
         fields = '__all__'
+        
+class ProjetSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Projet
+        fields = '__all__'
+        
 
