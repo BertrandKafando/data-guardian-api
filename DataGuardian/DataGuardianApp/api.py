@@ -20,6 +20,11 @@ import json
 from django.db import transaction
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+from sqlalchemy import create_engine, text as sql_text
+from langdetect import detect, LangDetectException
+import spacy
+from collections import Counter
+import re
 
 
 env = environ.Env()
@@ -458,14 +463,62 @@ class SemanticInferenceView(APIView):
 
     http_method_names = ["head","post"]
 
+    nlp_fr = spacy.load("fr_core_news_md")
+    nlp_en = spacy.load("en_core_web_md")
 
+    def determine_type_by_regex(texte, regex_patterns):
+        for type_entite, pattern in regex_patterns.items():
+            if re.search(pattern, texte, re.IGNORECASE):
+                return type_entite
+        return None
+    
 
     def post(self, request, *args, **kwargs):
 
-        # call the function here
 
-        return Response(
-            {
-            'detail':'utilisateur deconnecté'
-            },
-            status=status.HTTP_200_OK)
+        engine = create_engine(f'postgresql://{env("POSTGRES_USER")}:{env("POSTGRES_PASSWORD")}/{env("POSTGRES_DB")}')
+        conn = engine.connect()
+
+        # Définition des expressions régulières
+        regex_patterns = {
+            'EMAIL': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+            'PHONE': r'\b\d{10}\b',
+            'DATE': r'\b\d{1,2}/\d{1,2}/\d{4}\b|\b\d{4}-\d{1,2}-\d{1,2}\b|\b\d{1,2} (Janvier|Février|Mars|Avril|Mai|Juin|Juillet|Août|Septembre|Octobre|Novembre|Décembre) \d{4}\b',
+            'ADDRESS': r'\b(?:Rue|Avenue|Boulevard|Place|Allée|Chemin|Voie|Quai|Square|Impasse)\s[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b',
+            'POSTAL_CODE': r'\b\d{4,5}\b',
+            'GENRE': r'\b(Femme|F|femme|f|Homme|H|homme|h|M|Mâle|male|Femelle|femelle|Unspecified|unspecified|Non-binary|non-binary|NB|nb)\b'
+        }
+
+        df = pd.read_sql_query(con=conn, sql=sql_text("SELECT * FROM CLIENTS"))
+
+        # Compteur pour chaque type d'entité par colonne
+        entites_par_colonne = {col: Counter() for col in df.columns}
+
+        # Analyse des colonnes
+        for col in df.columns:
+            for item in df[col].dropna():
+                texte = str(item).strip()
+                if texte:
+
+                    # Vérifier avec les regex
+                    regex_type = SemanticInferenceView.determine_type_by_regex(texte, regex_patterns)
+                    if regex_type:
+                        entites_par_colonne[col][regex_type] += 1
+                        continue
+
+                    # Sinon, utiliser l'analyse NER
+                    try:
+                        langue = detect(texte) 
+                        if langue != 'fr' and langue != 'en' :
+                            langue = 'fr'
+                    except LangDetectException:
+                        langue = 'en'  
+
+                    nlp = SemanticInferenceView.nlp_fr if langue == 'fr' else SemanticInferenceView.nlp_en
+                    doc = nlp(texte)
+                    for ent in doc.ents:
+                        entites_par_colonne[col][ent.label_] += 1
+
+        type_dominant_par_colonne = {col: entites.most_common(1)[0][0] if entites else 'Aucun' for col, entites in entites_par_colonne.items()}
+
+        return Response({'result':type_dominant_par_colonne}, status=status.HTTP_200_OK)
