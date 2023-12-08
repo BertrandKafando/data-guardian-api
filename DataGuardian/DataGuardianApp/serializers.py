@@ -218,7 +218,9 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
             validated_data['nom_fichier'] = fichier.name
             validated_data['taille_fichier'] = str(round(fichier.size / (1024 * 1024), 6)) + "MB"
 
-        base_de_donnees = BaseDeDonnees.objects.create( **validated_data)
+
+        base_de_donnees = BaseDeDonnees.objects.create( fichier_bd = fichier, **validated_data)
+
         return base_de_donnees
     
 
