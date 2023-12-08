@@ -10,6 +10,7 @@ from .authentication import *
 from django.contrib.auth import logout
 from .utils import Base64, DBFunctions
 import os
+import datetime
 from django.core.files.base import ContentFile
 from rest_framework.views import APIView
 from django.db.models import Q
@@ -205,9 +206,11 @@ class BaseDeDonneesViewSet(ModelViewSet):
                 return Response({'detail': 'Données invalides'}, status = status.HTTP_400_BAD_REQUEST)
             # get file in base_de_donnees_serializer.data.get("fichier_bd") and transform it to dataframe
              # TODO : get the file and convert it to dataframe
-            data = pd.read_csv(fichier_bd)
-            # TODO : create the table in the database
-            DBFunctions.insert_dataframe_into_postgresql_table(data, base_de_donnees_serializer.data.get("nom_base_de_donnees"))
+            data = pd.read_csv(fichier_bd, header=None)
+            # get time now and convert it to string and add to database name
+            time = str(datetime.datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S")).replace(":", "_").replace(".", "_").replace(" ", "_").replace("-", "_")
+            DBFunctions.insert_dataframe_into_postgresql_table(data, base_de_donnees_serializer.data.get("nom_base_de_donnees")+time)
     
             return Response(base_de_donnees_serializer.data, status=status.HTTP_201_CREATED)
     

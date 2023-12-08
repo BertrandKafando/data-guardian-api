@@ -3,7 +3,10 @@ from django.db import connection, transaction
 import base64
 import threading
 from django.http import QueryDict
+from psycopg2.extras import execute_values
 import re
+import numpy as np
+import pandas as pd
 
 class EmailThread(threading.Thread):
 
@@ -69,18 +72,17 @@ class DBFunctions:
                     f"col{i+1} VARCHAR" for i in range(len(dataframe.columns)))
                 
                 cursor.execute(
-                    f"DROP TABLE IF EXISTS {table_name};")
-                
-                cursor.execute(
                     f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});")
 
                 # Disable constraint checks temporarily
                 with connection.constraint_checks_disabled():
-                    for i in range(dataframe.shape[0]):
+                    for i in range(0,dataframe.shape[0]):
                         row = list(dataframe.iloc[i, :])
-                        row = ', '.join(f"'{str(x)}'" for x in row)
-                        row = "(" + row + ")"
-                        cursor.execute(f"INSERT INTO {table_name} VALUES {row};")
+                        row = [val.item() if isinstance(val, np.generic)
+                               else val for val in row]
+                        placeholders = ", ".join(["%s"] * len(row))
+                        insert_query = f"INSERT INTO {table_name} VALUES ({placeholders});"
+                        cursor.execute(insert_query, row)
 
             return 0
 
