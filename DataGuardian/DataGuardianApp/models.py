@@ -102,6 +102,19 @@ class Projet(models.Model):
 
     __repr__ = __str__
 
+class Projet(models.Model):
+
+    nom_projet = models.CharField(max_length=100)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_mise_a_jour = models.DateTimeField(default=datetime.datetime.now)
+    descriptif = models.TextField(null=True, blank=True)
+    utilisateur = models.ForeignKey(Utilisateur, related_name="projet", on_delete=models.CASCADE, null=True, blank=True)
+
+    def __str__(self):
+        return self.nom_projet
+
+    __repr__ = __str__
+
 
    
 class BaseDeDonnees(models.Model):
@@ -161,6 +174,8 @@ class BaseDeDonnees(models.Model):
             ],
         )
     
+    Projet = models.ForeignKey(Projet,related_name="base_de_donnees", on_delete=models.CASCADE, null=True, blank=True)
+
     Projet = models.ForeignKey(Projet,related_name="base_de_donnees", on_delete=models.CASCADE, null=True, blank=True)
 
 
