@@ -1,5 +1,5 @@
 from django.core.mail import EmailMessage
-from django.db import connection
+from django.db import connection, transaction
 import base64
 import threading
 from django.http import QueryDict
@@ -60,7 +60,6 @@ class DBFunctions:
 
                 print(f"Erreur lors de l'exécution de la fonction {nom_fonction}: {e}")
                 return -1
-
 
     def insert_dataframe_into_postgresql_table(dataframe, table_name):
         try:

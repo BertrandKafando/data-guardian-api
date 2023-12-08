@@ -13,7 +13,6 @@ import os
 from django.core.files.base import ContentFile
 from rest_framework.views import APIView
 from django.db.models import Q
-import pandas as pd
 from django.conf import settings
 import environ
 import json
@@ -25,6 +24,7 @@ from langdetect import detect, LangDetectException
 import spacy
 from collections import Counter
 import re
+import pandas as pd
 
 
 env = environ.Env()
@@ -193,6 +193,23 @@ class BaseDeDonneesViewSet(ModelViewSet):
         base_de_donnees.delete()
 
         return Response(status=status.HTTP_204_NO_CONTENT) 
+    
+
+    def create(self, request, *args, **kwargs):
+            
+            fichier_bd = request.data.get("fichier_bd", None)
+            base_de_donnees_serializer=BaseDeDonneesSerializer(data=request.data)
+            
+    
+            if not base_de_donnees_serializer.is_valid():
+                return Response({'detail': 'Données invalides'}, status = status.HTTP_400_BAD_REQUEST)
+            # get file in base_de_donnees_serializer.data.get("fichier_bd") and transform it to dataframe
+             # TODO : get the file and convert it to dataframe
+            data = pd.read_csv(fichier_bd)
+            # TODO : create the table in the database
+            DBFunctions.insert_dataframe_into_postgresql_table(data, base_de_donnees_serializer.data.get("nom_base_de_donnees"))
+    
+            return Response(base_de_donnees_serializer.data, status=status.HTTP_201_CREATED)
     
 
 
@@ -471,6 +488,62 @@ class LogoutView(APIView):
         logout(request)
 
         return Response({'detail':'utilisateur deconnecté'},status=status.HTTP_200_OK)
+
+
+
+class ProjetViewSet(ModelViewSet):
+    serializer_class= ProjetSerializer
+
+    # def get_permissions(self):
+    #     if self.request.method == "GET":
+    #         self.permission_classes = [IsCustomerAuthenticated]
+    #     elif self.request.method == "POST":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "PUT" or self.request.method == "PATCH":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "DELETE":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     return [permission() for permission in self.permission_classes]
+
+
+    def get_queryset(self):
+
+        queryset = Projet.objects.all()
+        return queryset
+    
+    
+    
+
+
+
+
+
+
+class ProjetViewSet(ModelViewSet):
+    serializer_class= ProjetSerializer
+
+    # def get_permissions(self):
+    #     if self.request.method == "GET":
+    #         self.permission_classes = [IsCustomerAuthenticated]
+    #     elif self.request.method == "POST":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "PUT" or self.request.method == "PATCH":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "DELETE":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     return [permission() for permission in self.permission_classes]
+
+
+    def get_queryset(self):
+
+        queryset = Projet.objects.all()
+        return queryset
+    
+    
+    
+
+
+
 
 
 class SemanticInferenceView(APIView):

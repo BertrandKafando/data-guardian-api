@@ -212,19 +212,21 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
 
         fichier = validated_data.pop('fichier_bd', None)
+        print("validated_data")
 
         if fichier : 
             validated_data['nom_fichier'] = fichier.name
             validated_data['taille_fichier'] = str(round(fichier.size / (1024 * 1024), 6)) + "MB"
 
-        base_de_donnees = BaseDeDonnees.objects.create(fichier_bd = fichier, **validated_data)
+        base_de_donnees = BaseDeDonnees.objects.create( **validated_data)
         return base_de_donnees
     
 
     def update(self, instance, validated_data):
-
+        
+        print("validated_data")
         fichier = validated_data.pop('fichier_bd', None)
-
+         
         if fichier:
             validated_data['nom_fichier'] = fichier.name
             validated_data['taille_fichier'] = str(round(fichier.size / (1024 * 1024), 6)) + "MB"
@@ -300,6 +302,13 @@ class MetaColonneSerializer(serializers.ModelSerializer):
     class Meta:
         model = MetaColonne
         fields = '__all__'
+        
+class ProjetSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Projet
+        fields = '__all__'
+        
 
 
 class ProjetSerializer(serializers.ModelSerializer):
