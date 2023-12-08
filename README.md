@@ -104,7 +104,7 @@ If you want to run the project locally without Docker, follow these additional s
 
     ```
     python -m venv env
-    source env/bin/activate
+    env/Scripts/activate
     ```
 
 3. Install the dependencies:
