@@ -247,8 +247,7 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
 
 class DiagnosticSerializer(serializers.Serializer):
 
-    utilisateur = serializers.CharField(required=False)
-    criteres = CritereSerializer(many=True, required=False)
+    parametre_diagnostic = serializers.CharField(required=False)
     base_de_donnees = BaseDeDonneesSerializer(required=False)
 
     class Meta:
@@ -257,7 +256,7 @@ class DiagnosticSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
 
-        instance.criteres.set(validated_data.get('criteres', instance.criteres.all()))
+        instance.parametre_diagnostic.set(validated_data.get('parametre_diagnostic', instance.criteres.all()))
         base_de_donnees_data = validated_data.get('base_de_donnees', None)
 
         if base_de_donnees_data :
@@ -311,3 +310,9 @@ class ProjetSerializer(serializers.ModelSerializer):
         fields = '__all__'
         
 
+
+class ProjetSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Projet
+        fields = '__all__'

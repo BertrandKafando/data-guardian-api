@@ -187,7 +187,6 @@ class BaseDeDonneesViewSet(ModelViewSet):
         if base_de_donnees.fichier_bd :
             
             file_path = base_de_donnees.fichier_bd.path
-            print(file_path)
             if os.path.exists(file_path):
                 os.remove(file_path)
 
@@ -255,34 +254,31 @@ class DiagnosticViewSet(APIView):
     @swagger_auto_schema(request_body=DiagnosticSerializer)
     def post(self, request, *args, **kwargs):
 
-
-        result_nb_rows = DBFunctions.executer_fonction_postgresql('NombreDeLignes', 'Clients')
-        result_nb_nulls = DBFunctions.executer_fonction_postgresql('NombreDeNULLs','Clients','ADNCLI')
-        print(result_nb_rows)
-        print(result_nb_nulls)
-
-
-
-
-        print(request.data)
-
         diagnostic_serializer=DiagnosticSerializer(data=request.data)
 
         if not diagnostic_serializer.is_valid():
             return Response({'detail': 'Données invalides'}, status = status.HTTP_400_BAD_REQUEST)
-        
-        print(diagnostic_serializer.data)
+    
+
+        diagnostic_data = diagnostic_serializer.data
+
         
         user = request.user
         utilisateur = Utilisateur.objects.filter(
             compte__identifiant=user.username
         ).first()
 
-        base_de_donnees_data = diagnostic_serializer.data.pop('base_de_donnees', None)
+        parametre_diagnostic = diagnostic_data.pop("parametre_diagnostic")
+
+        diagnostic_data = DBFunctions.extract_nested_data(request)
+
+        base_de_donnees_data = diagnostic_data.pop('base_de_donnees', None)
 
         if base_de_donnees_data :
-            if base_de_donnees_data.get("fichier_bd", None) :
-                base_de_donnees_serializer = BaseDeDonneesSerializer(data=base_de_donnees_data)
+            if fichier_bd :
+                base_de_donnees_serializer = BaseDeDonneesSerializer(
+                        data=base_de_donnees_data
+                    )
                 base_de_donnees_serializer.is_valid(raise_exception=True)
                 base_de_donnees = base_de_donnees_serializer.save()
             else : 
@@ -291,38 +287,56 @@ class DiagnosticViewSet(APIView):
                 # TODO : récuperer la base de données grace à son nom et l'utilisateur qui l'avait uploadé : query on Diagnostic -> base_de_donnees & utilisateur
                 pass
 
-
-            if 'utilisateur' in diagnostic_serializer.data :
-                utilisateur =  Utilisateur.objects.filter(compte__identifiant=diagnostic_serializer.data.pop("utilisateur")).first()
-            else :
-                utilisateur = utilisateur.compte.identifiant
-
+            critere_instance = Critere.objects.create(
+                parametre_diagnostic=parametre_diagnostic
+            )
+             
             diagnostic = Diagnostic.objects.create(
                 base_de_donnees=base_de_donnees,
                 utilisateur=utilisateur, 
-                **diagnostic_serializer.data
+                parametre_diagnostic = critere_instance
             )
 
-            # TODO : créer les objets criteres et les ajouter à l'objet diagnostic
-            criteres = diagnostic_serializer.data.pop("criteres")
+            chemin_fichier_csv = base_de_donnees.fichier_bd.path
 
-            #for critere_elt in criteres :
-                #print(critere_elt)
-                # get or create a new instance of critere named critere
-                #diagnostic.criteres.add(critere)
-                #diagnostic.save()
+            df = pd.read_csv(chemin_fichier_csv)
 
-            # TODO convertir le fichier en Dataframe et créer la table à partir du Dataframe exécuter les procédures et fonctions stockées : créer une fonction run diagnostic
+            # TODO : Exécuter la fonction de Diallo
 
-            # ICI je teste avec la table client créée pour cela
+            table_creation_result = DBFunctions.insert_dataframe_into_postgresql_table(df, base_de_donnees.nom_base_de_donnees)
 
-        result_nb_rows = DBFunctions.executer_fonction_postgresql('NombreDeLignes', 'Clients')
-        print(result_nb_rows)
+            if table_creation_result == 0 :
 
+                if parametre_diagnostic == "VAL_MANQ" :
+
+                    for i in range(len(list(df.columns))):
+                        col = "col"+str(i+1)
+                        result_nb_nulls = DBFunctions.executer_fonction_postgresql('NombreDeNULLs', base_de_donnees.nom_base_de_donnees, col)[0]
+                        print(f"nombre de valeurs nulles pour la colonne {col} {result_nb_nulls}")
+
+                if parametre_diagnostic == "VAL_MANQ_CONTRAINTS" :
+                    pass
+
+                if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN" :
+                    pass
+
+                if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN_DUPLICATIONS" :
+                    pass
+
+                if parametre_diagnostic == "ALL" :
+                    pass
+
+
+                # TODO : Insert Meta données
+
+            else :
+                pass
+
+            diagnostic_data = DiagnosticSerializer(diagnostic).data
 
         return Response({
-                "diagnostic" : diagnostic,
-            }, status=status.HTTP_200_OK)
+            "diagnostic" : diagnostic_data,
+        }, status=status.HTTP_200_OK)
  
 
 
@@ -595,3 +609,25 @@ class SemanticInferenceView(APIView):
         type_dominant_par_colonne = {col: entites.most_common(1)[0][0] if entites else 'Aucun' for col, entites in entites_par_colonne.items()}
 
         return Response({'result':type_dominant_par_colonne}, status=status.HTTP_200_OK)
+    
+
+
+class ProjetViewSet(ModelViewSet):
+    serializer_class= ProjetSerializer
+
+    # def get_permissions(self):
+    #     if self.request.method == "GET":
+    #         self.permission_classes = [IsCustomerAuthenticated]
+    #     elif self.request.method == "POST":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "PUT" or self.request.method == "PATCH":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "DELETE":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     return [permission() for permission in self.permission_classes]
+
+
+    def get_queryset(self):
+
+        queryset = Projet.objects.all()
+        return queryset
