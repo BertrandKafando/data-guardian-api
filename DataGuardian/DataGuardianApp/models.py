@@ -188,8 +188,8 @@ class Diagnostic(models.Model):
         max_length = 100,
         choices=CHOIX_STATUS
     )
-    Utilisateur = models.ForeignKey(Utilisateur,related_name="diagnostic", on_delete=models.CASCADE, null=True, blank=True)
-    parametre_diagnostic = models.ForeignKey(Critere, related_name='diagnostic', on_delete=models.CASCADE, blank=True)
+    utilisateur = models.ForeignKey(Utilisateur,related_name="diagnostic", on_delete=models.CASCADE, null=True, blank=True)
+    parametre_diagnostic = models.ForeignKey(Critere, related_name='diagnostic', on_delete=models.CASCADE, null=True, blank=True)
     base_de_donnees = models.ForeignKey(BaseDeDonnees,related_name="diagnostic", on_delete=models.CASCADE, null=True, blank=True)
     
 

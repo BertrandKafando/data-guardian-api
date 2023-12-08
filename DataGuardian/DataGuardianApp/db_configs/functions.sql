@@ -63,7 +63,7 @@ BEGIN
     Query := 'SELECT COUNT (*) FROM ' || NOMTAB || ' WHERE ' ||  Nom_COL || ' IS NULL';
 
     IF (TypeDesColonne(NOMTAB, NOM_COL) = 'character varying') THEN
-        Query := Query || ' OR (' || Nom_COL || '  IN (''MISSINGVALUE'',''NULL'', ''-'', ''='', ''!'', ''?'', ''''))';
+        Query := Query || ' OR (' || Nom_COL || '  IN (''MISSINGVALUE'',''NULL'', ''-'', ''='', ''!'', ''?'',''nan'', ''''))';
     END IF;
     EXECUTE Query INTO NbValNulles;
     RETURN NbValNulles; 
