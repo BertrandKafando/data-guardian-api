@@ -301,3 +301,9 @@ class MetaColonneSerializer(serializers.ModelSerializer):
         model = MetaColonne
         fields = '__all__'
 
+
+class ProjetSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Projet
+        fields = '__all__'

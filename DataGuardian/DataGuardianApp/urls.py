@@ -18,6 +18,8 @@ router.register(r'meta-table', MetaTableViewSet, basename='meta-table')
 router.register(r'meta-special-car', MetaAnomalieViewSet, basename='Meta-special-car')
 router.register(r'meta-tous-contraintes', MetaTousContraintesViewSet, basename='Meta-tous-contraintes')
 router.register(r'meta-colonne', MetaColonneViewSet, basename='Meta-colonne')
+router.register(r'projet', ProjetViewSet, basename='projet')
+
 
 
 

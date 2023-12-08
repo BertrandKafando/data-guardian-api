@@ -299,7 +299,6 @@ class DiagnosticViewSet(APIView):
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS" :
                     pass
-                    # parcourir toutes les colonnes
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN" :
                     pass
@@ -537,3 +536,25 @@ class SemanticInferenceView(APIView):
         type_dominant_par_colonne = {col: entites.most_common(1)[0][0] if entites else 'Aucun' for col, entites in entites_par_colonne.items()}
 
         return Response({'result':type_dominant_par_colonne}, status=status.HTTP_200_OK)
+    
+
+
+class ProjetViewSet(ModelViewSet):
+    serializer_class= ProjetSerializer
+
+    # def get_permissions(self):
+    #     if self.request.method == "GET":
+    #         self.permission_classes = [IsCustomerAuthenticated]
+    #     elif self.request.method == "POST":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "PUT" or self.request.method == "PATCH":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "DELETE":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     return [permission() for permission in self.permission_classes]
+
+
+    def get_queryset(self):
+
+        queryset = Projet.objects.all()
+        return queryset
