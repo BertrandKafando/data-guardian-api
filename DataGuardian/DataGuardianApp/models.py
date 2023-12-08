@@ -98,7 +98,7 @@ class Projet(models.Model):
     utilisateur = models.ForeignKey(Utilisateur, related_name="projet", on_delete=models.CASCADE, null=True, blank=True)
 
     def __str__(self):
-        return self.nom_projet
+        return  str(self.nom_projet)
 
     __repr__ = __str__
 
@@ -162,8 +162,6 @@ class BaseDeDonnees(models.Model):
             ],
         )
     
-    Projet = models.ForeignKey(Projet,related_name="base_de_donnees", on_delete=models.CASCADE, null=True, blank=True)
-
     Projet = models.ForeignKey(Projet,related_name="base_de_donnees", on_delete=models.CASCADE, null=True, blank=True)
 
 
