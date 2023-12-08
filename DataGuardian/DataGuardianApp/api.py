@@ -8,7 +8,7 @@ from .permissions import *
 from django.contrib.auth import authenticate, login
 from .authentication import *
 from django.contrib.auth import logout
-from .utils import Base64
+from .utils import Base64, DBFunctions
 import os
 from django.core.files.base import ContentFile
 from rest_framework.views import APIView
@@ -18,7 +18,13 @@ from django.conf import settings
 import environ
 import json
 from django.db import transaction
-
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+from sqlalchemy import create_engine, text as sql_text
+from langdetect import detect, LangDetectException
+import spacy
+from collections import Counter
+import re
 
 
 env = environ.Env()
@@ -64,6 +70,13 @@ class CompteViewSet(ModelViewSet):
     def get_queryset(self):
         queryset= Compte.objects.all()
         return queryset
+    
+    def destroy(self, request, *args, **kwargs):
+
+        compte = self.get_object()
+        User.objects.get(username=compte.identifiant).delete()
+        compte.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT) 
 
 
 class UtilisateurViewSet(ModelViewSet):
@@ -99,6 +112,9 @@ class UtilisateurViewSet(ModelViewSet):
 
             queryset= Utilisateur.objects.all().exclude(role__nom_role='Administrateur')
 
+        # TODO :remove this following line it's just for test
+        queryset= Utilisateur.objects.all()
+
         return queryset
 
 
@@ -132,6 +148,9 @@ class CritereViewSet(ModelViewSet):
         return queryset
     
 
+fichier_bd = openapi.Parameter('fichier_bd', in_=openapi.IN_QUERY,
+                           type=openapi.TYPE_FILE, description="Fichier de la base de données")
+
 class BaseDeDonneesViewSet(ModelViewSet):
     serializer_class= BaseDeDonneesSerializer
 
@@ -147,6 +166,9 @@ class BaseDeDonneesViewSet(ModelViewSet):
     #     return [permission() for permission in self.permission_classes]
 
 
+    @swagger_auto_schema(
+        manual_parameters=[fichier_bd],
+    )
     def get_queryset(self):
 
         base_de_donnees = self.request.query_params.get('base_de_donnees')
@@ -154,8 +176,7 @@ class BaseDeDonneesViewSet(ModelViewSet):
 
         if base_de_donnees:
             
-            queryset = queryset.filter(nom_base_de_donnees__icontains=base_de_donnees)
-        
+            queryset = queryset.filter(nom_base_de_donnees__icontains=base_de_donnees)        
 
         return queryset
 
@@ -166,7 +187,6 @@ class BaseDeDonneesViewSet(ModelViewSet):
         if base_de_donnees.fichier_bd :
             
             file_path = base_de_donnees.fichier_bd.path
-            print(file_path)
             if os.path.exists(file_path):
                 os.remove(file_path)
 
@@ -178,21 +198,23 @@ class BaseDeDonneesViewSet(ModelViewSet):
 
 class DiagnosticViewSet(APIView):
 
-    # def get_permissions(self):
-    #     if self.request.method == "GET":
-    #         self.permission_classes = [IsCustomerAuthenticated | IsAdminAuthenticated]
-    #     elif self.request.method == "POST":
-    #         self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
-    #     elif self.request.method == "PUT" or self.request.method == "PATCH":
-    #         self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
-    #     elif self.request.method == "DELETE":
-    #         self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
-    #     return [permission() for permission in self.permission_classes]
+    def get_permissions(self):
+        if self.request.method == "GET":
+            self.permission_classes = [IsCustomerAuthenticated | IsAdminAuthenticated ]
+        elif self.request.method == "POST":
+            self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
+        elif self.request.method == "PUT" or self.request.method == "PATCH":
+            self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
+        elif self.request.method == "DELETE":
+            self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
+        return [permission() for permission in self.permission_classes]
+
+    serializer_class = DiagnosticSerializer 
 
 
     def get(self, request):
 
-        user = self.request.user
+        user = request.user
         print(user)
         current_user = Utilisateur.objects.filter(
             compte__identifiant=user.username
@@ -212,31 +234,91 @@ class DiagnosticViewSet(APIView):
         return Response(response_data,status=status.HTTP_200_OK)
         
 
+    @swagger_auto_schema(request_body=DiagnosticSerializer)
     def post(self, request, *args, **kwargs):
 
         diagnostic_serializer=DiagnosticSerializer(data=request.data)
 
         if not diagnostic_serializer.is_valid():
             return Response({'detail': 'Données invalides'}, status = status.HTTP_400_BAD_REQUEST)
+    
+
+        diagnostic_data = diagnostic_serializer.data
+
         
-        base_de_donnees_data = diagnostic_serializer.data.pop('base_de_donnees', None)
+        user = request.user
+        utilisateur = Utilisateur.objects.filter(
+            compte__identifiant=user.username
+        ).first()
+
+        parametre_diagnostic = diagnostic_data.pop("parametre_diagnostic")
+
+        diagnostic_data = DBFunctions.extract_nested_data(request)
+
+        base_de_donnees_data = diagnostic_data.pop('base_de_donnees', None)
 
         if base_de_donnees_data :
-            if base_de_donnees_data.get("fichier_bd", None) :
-                base_de_donnees_serializer = BaseDeDonneesSerializer(data=base_de_donnees_data)
+            if fichier_bd :
+                base_de_donnees_serializer = BaseDeDonneesSerializer(
+                        data=base_de_donnees_data
+                    )
                 base_de_donnees_serializer.is_valid(raise_exception=True)
                 base_de_donnees = base_de_donnees_serializer.save()
             else : 
+                
                 # On a un select de la BD et non un upload
                 # TODO : récuperer la base de données grace à son nom et l'utilisateur qui l'avait uploadé : query on Diagnostic -> base_de_donnees & utilisateur
                 pass
 
-        diagnostic = Diagnostic.objects.create(base_de_donnees=base_de_donnees, **diagnostic_serializer.data)
+            critere_instance = Critere.objects.create(
+                parametre_diagnostic=parametre_diagnostic
+            )
+             
+            diagnostic = Diagnostic.objects.create(
+                base_de_donnees=base_de_donnees,
+                utilisateur=utilisateur, 
+                parametre_diagnostic = critere_instance
+            )
 
-        # TODO convertir le fichier en Dataframe et exécuter les procédures et fonctions stockées : créer une fonction run diagnostic
+            chemin_fichier_csv = base_de_donnees.fichier_bd.path
+
+            df = pd.read_csv(chemin_fichier_csv)
+
+            # TODO : Exécuter la fonction de Diallo
+
+            table_creation_result = DBFunctions.insert_dataframe_into_postgresql_table(df, base_de_donnees.nom_base_de_donnees)
+
+            if table_creation_result == 0 :
+
+                if parametre_diagnostic == "VAL_MANQ" :
+
+                    for i in range(len(list(df.columns))):
+                        col = "col"+str(i+1)
+                        result_nb_nulls = DBFunctions.executer_fonction_postgresql('NombreDeNULLs', base_de_donnees.nom_base_de_donnees, col)[0]
+                        print(f"nombre de valeurs nulles pour la colonne {col} {result_nb_nulls}")
+
+                if parametre_diagnostic == "VAL_MANQ_CONTRAINTS" :
+                    pass
+
+                if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN" :
+                    pass
+
+                if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN_DUPLICATIONS" :
+                    pass
+
+                if parametre_diagnostic == "ALL" :
+                    pass
+
+
+                # TODO : Insert Meta données
+
+            else :
+                pass
+
+            diagnostic_data = DiagnosticSerializer(diagnostic).data
 
         return Response({
-            "diagnostic" : diagnostic,
+            "diagnostic" : diagnostic_data,
         }, status=status.HTTP_200_OK)
  
 
@@ -262,8 +344,8 @@ class MetaTableViewSet(ModelViewSet):
         return queryset
     
 
-class MetaSpecialCarViewSet(ModelViewSet):
-    serializer_class= MetaSpecialCarSerializer
+class MetaAnomalieViewSet(ModelViewSet):
+    serializer_class= MetaAnomalieSerializer
 
     # def get_permissions(self):
     #     if self.request.method == "GET":
@@ -279,7 +361,7 @@ class MetaSpecialCarViewSet(ModelViewSet):
 
     def get_queryset(self):
 
-        queryset = MetaSpecialCar.objects.all()
+        queryset = MetaAnomalie.objects.all()
         return queryset
     
 
@@ -322,4 +404,157 @@ class MetaColonneViewSet(ModelViewSet):
     def get_queryset(self):
 
         queryset = MetaColonne.objects.all()
+        return queryset
+    
+
+class LoginView(APIView):
+
+    serializer_class= CompteSerializer
+    http_method_names = ["post","head"]
+
+    def post(self, request, *args, **kwargs):
+
+        authentication_serializer=CompteSerializer(data=request.data)
+
+        if not authentication_serializer.is_valid():
+            return Response({'detail': 'Données invalides'}, status = status.HTTP_400_BAD_REQUEST)
+
+        user_instance = Utilisateur.objects.filter(compte__identifiant=authentication_serializer.data.get("identifiant")).first()
+
+
+        user = authenticate(
+            username = authentication_serializer.data.get("identifiant"),
+            password = authentication_serializer.data.get("mot_de_passe")
+        )
+
+        if not user:
+            return Response({'detail': 'informations de connexion invalides.'}, status=status.HTTP_404_NOT_FOUND)
+        
+        login(request, user)
+
+
+        #TOKEN
+        token, _ = Token.objects.get_or_create(user = user)
+
+        #token_expire_handler will check, if the token is expired it will generate new one
+        is_expired, token = token_expire_handler(token)   
+        user_serialized = UtilisateurSerializer(user_instance)
+        permission=list(user.get_all_permissions())[0]
+        user_instance_data = user_serialized.data
+        user_instance_data["identifiant"]=authentication_serializer.data.get("identifiant")
+        user_instance_data.pop('compte',None)
+        user_instance_data.pop('email',None)
+        user_instance_data.pop('telephone',None)
+
+        return Response({
+            'user': user_instance_data, 
+            'expires_in': expires_in(token),
+            'created_at': token.created,
+            'is_expired': is_expired,
+            'token': token.key,
+            'userType':permission.split(".")[1]
+        }, status=status.HTTP_200_OK)
+
+
+class LogoutView(APIView):
+    http_method_names = ["head","post"]
+
+
+    # def get_permissions(self):
+    #     if self.request.method == "POST":
+    #         self.permission_classes = [IsAuthenticated]
+
+
+    def post(self, request, *args, **kwargs):
+
+        Token.objects.filter(user=request.user).delete()
+        logout(request)
+
+        return Response({'detail':'utilisateur deconnecté'},status=status.HTTP_200_OK)
+
+
+class SemanticInferenceView(APIView):
+
+    http_method_names = ["head","post"]
+
+    nlp_fr = spacy.load("fr_core_news_md")
+    nlp_en = spacy.load("en_core_web_md")
+
+    def determine_type_by_regex(texte, regex_patterns):
+        for type_entite, pattern in regex_patterns.items():
+            if re.search(pattern, texte, re.IGNORECASE):
+                return type_entite
+        return None
+    
+
+    def post(self, request, *args, **kwargs):
+
+
+        engine = create_engine(f'postgresql://{env("POSTGRES_USER")}:{env("POSTGRES_PASSWORD")}/{env("POSTGRES_DB")}')
+        conn = engine.connect()
+
+        # Définition des expressions régulières
+        regex_patterns = {
+            'EMAIL': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+            'PHONE': r'\b\d{10}\b',
+            'DATE': r'\b\d{1,2}/\d{1,2}/\d{4}\b|\b\d{4}-\d{1,2}-\d{1,2}\b|\b\d{1,2} (Janvier|Février|Mars|Avril|Mai|Juin|Juillet|Août|Septembre|Octobre|Novembre|Décembre) \d{4}\b',
+            'ADDRESS': r'\b(?:Rue|Avenue|Boulevard|Place|Allée|Chemin|Voie|Quai|Square|Impasse)\s[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b',
+            'POSTAL_CODE': r'\b\d{4,5}\b',
+            'GENRE': r'\b(Femme|F|femme|f|Homme|H|homme|h|M|Mâle|male|Femelle|femelle|Unspecified|unspecified|Non-binary|non-binary|NB|nb)\b'
+        }
+
+        df = pd.read_sql_query(con=conn, sql=sql_text("SELECT * FROM CLIENTS"))
+
+        # Compteur pour chaque type d'entité par colonne
+        entites_par_colonne = {col: Counter() for col in df.columns}
+
+        # Analyse des colonnes
+        for col in df.columns:
+            for item in df[col].dropna():
+                texte = str(item).strip()
+                if texte:
+
+                    # Vérifier avec les regex
+                    regex_type = SemanticInferenceView.determine_type_by_regex(texte, regex_patterns)
+                    if regex_type:
+                        entites_par_colonne[col][regex_type] += 1
+                        continue
+
+                    # Sinon, utiliser l'analyse NER
+                    try:
+                        langue = detect(texte) 
+                        if langue != 'fr' and langue != 'en' :
+                            langue = 'fr'
+                    except LangDetectException:
+                        langue = 'en'  
+
+                    nlp = SemanticInferenceView.nlp_fr if langue == 'fr' else SemanticInferenceView.nlp_en
+                    doc = nlp(texte)
+                    for ent in doc.ents:
+                        entites_par_colonne[col][ent.label_] += 1
+
+        type_dominant_par_colonne = {col: entites.most_common(1)[0][0] if entites else 'Aucun' for col, entites in entites_par_colonne.items()}
+
+        return Response({'result':type_dominant_par_colonne}, status=status.HTTP_200_OK)
+    
+
+
+class ProjetViewSet(ModelViewSet):
+    serializer_class= ProjetSerializer
+
+    # def get_permissions(self):
+    #     if self.request.method == "GET":
+    #         self.permission_classes = [IsCustomerAuthenticated]
+    #     elif self.request.method == "POST":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "PUT" or self.request.method == "PATCH":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "DELETE":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     return [permission() for permission in self.permission_classes]
+
+
+    def get_queryset(self):
+
+        queryset = Projet.objects.all()
         return queryset

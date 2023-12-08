@@ -5,6 +5,7 @@ from django.contrib.contenttypes.models import ContentType
 from rest_framework.exceptions import  NotFound
 from drf_extra_fields.fields import Base64ImageField
 import base64
+import pandas as pd
 import os
 import pytz
 from django.utils import timezone
@@ -13,15 +14,20 @@ from django.core.files.base import ContentFile
 from uuid import uuid4
 
 
+
 utc = pytz.UTC
 now = timezone.now()
+BASE_DIR = settings.BASE_DIR
 
+
+#ok
 class RoleSerializer(serializers.ModelSerializer):
     
     class Meta:
         model=Role
-        fields=["nom_role"]
+        fields=["nom_role","creation", "modification"]
 
+#ok
 class CompteSerializer(serializers.ModelSerializer):
 
     mot_de_passe=serializers.CharField(
@@ -30,10 +36,10 @@ class CompteSerializer(serializers.ModelSerializer):
 
     class Meta:
         model=Compte
-        fields='__all__'
-        #extra_kwargs = {
-        #    'identifiant': {'validators': []}
-        #}
+        fields=["identifiant","mot_de_passe"]
+        extra_kwargs = {
+            'identifiant': {'validators': []}
+        }
 
     def create(self, validated_data):
         
@@ -58,22 +64,32 @@ class CompteSerializer(serializers.ModelSerializer):
         if validated_data.get("identifiant")!=instance.identifiant and Compte.objects.filter(identifiant=validated_data.get("identifiant")).exists():
             raise serializers.ValidationError("Ce compte existe déja")
 
-        user=User.objects.filter(username=instance.identifiant).first()
+        user=User.objects.filter(username = instance.identifiant).first()
+        compte_model=Compte.objects.filter(identifiant = instance.identifiant).first()
 
         if user :
-            if 'mot_de_passe' in validated_data:
-                user.set_password(validated_data.get("mot_de_passe", validated_data.get('mot_de_passe')))
+
+            if 'mot_de_passe' in validated_data :
+
+                if validated_data.get("mot_de_passe", None) != compte_model.mot_de_passe :
+                    user.set_password(validated_data.get("mot_de_passe", None))
+                    compte_model.mot_de_passe = make_password(validated_data.get("mot_de_passe"))
             
-            if 'identifiant' in validated_data:
-                user.username=validated_data.get("identifiant", validated_data.get('identifiant'))
+            if 'identifiant' in validated_data :
+
+                user.username = validated_data.get("identifiant", compte_model.identifiant)
+                compte_model.identifiant = validated_data.get("identifiant", compte_model.identifiant)
+                
             user.save()
+            compte_model.save()
+
         else :
             raise NotFound("cet utilisateur n\'existe pas!")
 
         return super(CompteSerializer, self).update(instance,validated_data)
     
 
-
+#ok
 class UtilisateurSerializer(serializers.ModelSerializer):
     
     compte = CompteSerializer(required=False)
@@ -178,12 +194,13 @@ class UtilisateurSerializer(serializers.ModelSerializer):
         return super(UtilisateurSerializer,self).update(instance, validated_data)
 
 
-
+#ok
 class CritereSerializer(serializers.ModelSerializer):
     
     class Meta:
         model=Critere
-        fields=["nom_critere"]
+        fields=["parametre_diagnostic"]
+
 
 
 class BaseDeDonneesSerializer(serializers.ModelSerializer):
@@ -191,14 +208,16 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
         model = BaseDeDonnees
         fields = '__all__'
 
+
     def create(self, validated_data):
 
         fichier = validated_data.pop('fichier_bd', None)
+
         if fichier : 
             validated_data['nom_fichier'] = fichier.name
-            validated_data['taille_fichier'] = fichier.size / (1024 * 1024)
+            validated_data['taille_fichier'] = str(round(fichier.size / (1024 * 1024), 6)) + "MB"
 
-        base_de_donnees = BaseDeDonnees.objects.create(**validated_data)
+        base_de_donnees = BaseDeDonnees.objects.create(fichier_bd = fichier, **validated_data)
         return base_de_donnees
     
 
@@ -208,7 +227,7 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
 
         if fichier:
             validated_data['nom_fichier'] = fichier.name
-            validated_data['taille_fichier'] = fichier.size / (1024 * 1024) 
+            validated_data['taille_fichier'] = str(round(fichier.size / (1024 * 1024), 6)) + "MB"
 
         instance.nom_base_de_donnees = validated_data.get('nom_base_de_donnees', instance.nom_base_de_donnees)
         instance.descriptif = validated_data.get('descriptif', instance.descriptif)
@@ -226,40 +245,16 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
 
 class DiagnosticSerializer(serializers.Serializer):
 
-    utilisateur = UtilisateurSerializer(required=False)
-    criteres = CritereSerializer(many=True, required=False)
+    parametre_diagnostic = serializers.CharField(required=False)
     base_de_donnees = BaseDeDonneesSerializer(required=False)
 
     class Meta:
         fields='__all__'
 
 
-    # TODO : move to APIView on api.py
-
-    def create(self, validated_data):
-
-        base_de_donnees_data = validated_data.pop('base_de_donnees', None)
-
-        if base_de_donnees_data :
-            if base_de_donnees_data.get("fichier_bd", None) :
-                base_de_donnees_serializer = BaseDeDonneesSerializer(data=base_de_donnees_data)
-                base_de_donnees_serializer.is_valid(raise_exception=True)
-                base_de_donnees = base_de_donnees_serializer.save()
-            else : 
-                # On a un select de la BD et non un upload
-                # TODO : récuperer la base de données grace à son nom et l'utilisateur qui l'avait uploadé : query on Diagnostic -> base_de_donnees & utilisateur
-                pass
-
-        diagnostic = Diagnostic.objects.create(base_de_donnees=base_de_donnees, **validated_data)
-
-        # TODO convertir le fichier en Dataframe et exécuter les procédures et fonctions stockées : créer une fonction run diagnostic
-
-        return diagnostic
-    
-
     def update(self, instance, validated_data):
 
-        instance.criteres.set(validated_data.get('criteres', instance.criteres.all()))
+        instance.parametre_diagnostic.set(validated_data.get('parametre_diagnostic', instance.criteres.all()))
         base_de_donnees_data = validated_data.get('base_de_donnees', None)
 
         if base_de_donnees_data :
@@ -286,10 +281,10 @@ class MetaTableSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class MetaSpecialCarSerializer(serializers.ModelSerializer):
+class MetaAnomalieSerializer(serializers.ModelSerializer):
 
     class Meta:
-        model = MetaSpecialCar
+        model = MetaAnomalie
         fields = '__all__'
 
 
@@ -304,4 +299,11 @@ class MetaColonneSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MetaColonne
+        fields = '__all__'
+
+
+class ProjetSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Projet
         fields = '__all__'

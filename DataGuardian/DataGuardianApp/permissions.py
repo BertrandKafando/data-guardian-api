@@ -14,7 +14,7 @@ class IsCustomerAuthenticated(BasePermission):
         if request.user.is_anonymous:
             return False
         else:
-            token, _ = Token.objects.get(user = request.user)
+            token = Token.objects.get(user = request.user)
             is_expired = is_token_expired(token) 
             if is_expired :
                 token.delete()
@@ -31,7 +31,7 @@ class IsAdminAuthenticated(BasePermission):
         if request.user.is_anonymous:
             return False
         else:
-            token, _ = Token.objects.get(user = request.user)
+            token = Token.objects.get(user = request.user)
             is_expired = is_token_expired(token) 
             if(is_expired):
                 token.delete()
