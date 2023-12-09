@@ -256,6 +256,17 @@ class DiagnosticViewSet(APIView):
     @swagger_auto_schema(request_body=DiagnosticSerializer)
     def post(self, request, *args, **kwargs):
 
+
+        result_nb_rows = DBFunctions.executer_fonction_postgresql('NombreDeLignes', 'Clients')
+        result_nb_nulls = DBFunctions.executer_fonction_postgresql('NombreDeNULLs','Clients','ADNCLI')
+        print(result_nb_rows)
+        print(result_nb_nulls)
+
+
+
+
+        print(request.data)
+
         diagnostic_serializer=DiagnosticSerializer(data=request.data)
 
         if not diagnostic_serializer.is_valid():
