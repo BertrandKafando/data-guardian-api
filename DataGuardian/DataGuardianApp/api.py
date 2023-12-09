@@ -539,6 +539,8 @@ class ProjetViewSet(ModelViewSet):
     #         self.permission_classes= [IsCustomerAuthenticated ]
     #     return [permission() for permission in self.permission_classes]
 
+    nlp_fr = spacy.load("fr_core_news_md")
+    nlp_en = spacy.load("en_core_web_md")
 
     def get_queryset(self):
 
