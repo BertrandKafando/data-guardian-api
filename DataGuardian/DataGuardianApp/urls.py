@@ -23,6 +23,7 @@ router.register(r'projet', ProjetViewSet, basename='projet')
 
 
 
+
 schema_view = get_schema_view(
     openapi.Info(
         title="Data Guardian : API ",
