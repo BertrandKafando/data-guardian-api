@@ -114,3 +114,59 @@ class DBFunctions:
             nested_data['base_de_donnees']['fichier_bd'] = request.FILES['base_de_donnees[fichier_bd]']
 
         return nested_data
+    
+
+    def check_nulls(columns, meta_table, nom_bd) : 
+
+        meta_col_instances = list()
+
+        for i in range(len(list(columns))) :
+
+            col = "col"+str(i+1)
+
+            meta_colonne = MetaColonne()
+            meta_colonne.nom_colonne = col
+            result_nb_nulls = DBFunctions.executer_fonction_postgresql('NombreDeNULLs', nom_bd, col)
+
+            if type(result_nb_nulls) != int :
+                meta_colonne.nombre_valeurs_manquantes = result_nb_nulls[0]
+                meta_colonne.meta_table = meta_table
+                meta_colonne.save()
+                meta_col_instances.append(meta_colonne)
+
+        return meta_col_instances
+    
+
+    def check_constraints(columns, nom_bd) : 
+
+        new_columns_instance = list()
+
+        for col_instance in columns :
+
+            # On suppose que toutes les règles varchars s'appliquent sur cette colonne (On a pas encore la possibilité de connaitre la sémantique)
+
+            contraintes = MetaTousContraintes.objects.filter(category__icontains="String")
+
+            for constraint in contraintes : 
+
+                result_count_values_not_matching_regex = DBFunctions.executer_fonction_postgresql('count_values_not_matching_regex', nom_bd, col_instance.nom_colonne, constraint.contrainte)
+
+                if type(result_count_values_not_matching_regex) != int :
+
+                    if result_count_values_not_matching_regex[0] != 0 :
+
+                        anomalie = MetaAnomalie()
+                        anomalie.nom_anomalie = constraint.nom_contrainte
+                        anomalie.valeur_trouvee = int(result_count_values_not_matching_regex[0])
+
+                        anomalie.save()
+
+                        col_instance.meta_anomalie = anomalie
+
+            col_instance.contraintes.add(*contraintes)
+            col_instance.save()
+            new_columns_instance.append(col_instance)
+
+        return new_columns_instance
+
+            

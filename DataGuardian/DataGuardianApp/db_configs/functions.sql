@@ -699,7 +699,7 @@ BEGIN
         v_column_value := COALESCE(v_column_value, '');
 
         -- Check if the value does not match the regular expression
-        IF v_column_value !~ p_regex THEN
+        IF NOT v_column_value !~ p_regex THEN
             -- Increment the counter
             v_count := v_count + 1;
         END IF;
