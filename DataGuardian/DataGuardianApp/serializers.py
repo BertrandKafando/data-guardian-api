@@ -204,6 +204,7 @@ class CritereSerializer(serializers.ModelSerializer):
 
 
 
+
 class BaseDeDonneesSerializer(serializers.ModelSerializer):
     class Meta:
         model = BaseDeDonnees
