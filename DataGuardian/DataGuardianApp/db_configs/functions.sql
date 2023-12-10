@@ -775,11 +775,7 @@ BEGIN
     Query := 'SELECT COUNT (*) FROM ' || NOMTAB || ' WHERE ' ||  Nom_COL || ' IS NULL';
 
     IF (TypeDesColonne(NOMTAB, NOM_COL) = 'character varying') THEN
-<<<<<<< HEAD
         Query := Query || ' OR (' || Nom_COL || '  IN (''MISSINGVALUE'',''NULL'', ''-'', ''='', ''!'', ''?'',''nan'', ''''))';
-=======
-        Query := Query || ' OR (' || Nom_COL || '  IN (''MISSINGVALUE'',''NULL'', ''-'', ''='', ''!'', ''?'', ''''))';
->>>>>>> 1b87217 (adding functions and procedures creations on migration done)
     END IF;
     EXECUTE Query INTO NbValNulles;
     RETURN NbValNulles; 

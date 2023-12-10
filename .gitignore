@@ -4,7 +4,6 @@ staticfiles
 
 prod.py
 
-
 # données des volumes créés
 
 **/pgdata/
