@@ -170,7 +170,6 @@ class DBFunctions:
         return new_columns_instance
 
      
-    
 class DataSplitInsertionFromFileFunctions:
     
     def parse_file(file, sep, header=False):

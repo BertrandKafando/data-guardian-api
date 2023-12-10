@@ -10,6 +10,9 @@ from .authentication import *
 from django.contrib.auth import logout
 from .utils import Base64, DBFunctions, DataInsertionStep
 import os
+from .utils import Base64, DBFunctions
+import os
+import datetime
 from django.core.files.base import ContentFile
 from rest_framework.views import APIView
 from django.db.models import Q
@@ -214,6 +217,16 @@ class BaseDeDonneesViewSet(ModelViewSet):
             """
             return Response(base_de_donnees_serializer.data, status=status.HTTP_201_CREATED)
      
+            # get file in base_de_donnees_serializer.data.get("fichier_bd") and transform it to dataframe
+             # TODO : get the file and convert it to dataframe
+            data = pd.read_csv(fichier_bd, header=None)
+            # get time now and convert it to string and add to database name
+            time = str(datetime.datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S")).replace(":", "_").replace(".", "_").replace(" ", "_").replace("-", "_")
+            DBFunctions.insert_dataframe_into_postgresql_table(data, base_de_donnees_serializer.data.get("nom_base_de_donnees")+time)
+    
+            return Response(base_de_donnees_serializer.data, status=status.HTTP_201_CREATED)
+    
 
 
 class DiagnosticViewSet(APIView):
@@ -256,6 +269,17 @@ class DiagnosticViewSet(APIView):
     @swagger_auto_schema(request_body=DiagnosticSerializer)
     def post(self, request, *args, **kwargs):
 
+
+        result_nb_rows = DBFunctions.executer_fonction_postgresql('NombreDeLignes', 'Clients')
+        result_nb_nulls = DBFunctions.executer_fonction_postgresql('NombreDeNULLs','Clients','ADNCLI')
+        print(result_nb_rows)
+        print(result_nb_nulls)
+
+
+
+
+        print(request.data)
+
         diagnostic_serializer=DiagnosticSerializer(data=request.data)
 
         if not diagnostic_serializer.is_valid():
@@ -296,6 +320,7 @@ class DiagnosticViewSet(APIView):
              
             diagnostic = Diagnostic.objects.create(
                 base_de_donnees=base_de_donnees,
+                utilisateur=utilisateur, 
                 parametre_diagnostic = critere_instance
             )
 
@@ -308,6 +333,10 @@ class DiagnosticViewSet(APIView):
             
             print(f"table_creation_result : {table_creation_result}")
 
+            df = pd.read_csv(chemin_fichier_csv)
+
+            table_creation_result = DBFunctions.insert_dataframe_into_postgresql_table(df, base_de_donnees.nom_base_de_donnees)
+
             if table_creation_result == 0 :
 
                 meta_table = MetaTable()
@@ -318,6 +347,8 @@ class DiagnosticViewSet(APIView):
                     'NombreDeLignes', db_name)
                 result_nb_cols = DBFunctions.executer_fonction_postgresql(
                     'NombreDeColonnes', db_name)
+                result_nb_rows = DBFunctions.executer_fonction_postgresql('NombreDeLignes', base_de_donnees.nom_base_de_donnees)
+                result_nb_cols = DBFunctions.executer_fonction_postgresql('NombreDeColonnes', base_de_donnees.nom_base_de_donnees)
 
                 if type(result_nb_rows) != int :
                     meta_table.nombre_lignes = result_nb_rows[0]
@@ -344,6 +375,13 @@ class DiagnosticViewSet(APIView):
 
                     DBFunctions.check_constraints(
                         meta_cols_instance_nulls, db_name)
+                    DBFunctions.check_nulls(df.columns, meta_table, base_de_donnees.nom_base_de_donnees)
+
+                if parametre_diagnostic == "VAL_MANQ_CONTRAINTS" :
+
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, base_de_donnees.nom_base_de_donnees)
+
+                    DBFunctions.check_constraints(meta_cols_instance_nulls, base_de_donnees.nom_base_de_donnees)
 
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN" :
@@ -548,6 +586,7 @@ class ProjetViewSet(ModelViewSet):
 
         queryset = Projet.objects.all()
         return queryset
+    
 
 # class SemanticInferenceView(APIView):
 
