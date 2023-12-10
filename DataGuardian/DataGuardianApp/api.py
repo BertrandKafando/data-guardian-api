@@ -8,9 +8,8 @@ from .permissions import *
 from django.contrib.auth import authenticate, login
 from .authentication import *
 from django.contrib.auth import logout
-from .utils import Base64, DBFunctions
+from .utils import Base64, DBFunctions, DataInsertionStep
 import os
-import datetime
 from django.core.files.base import ContentFile
 from rest_framework.views import APIView
 from django.db.models import Q
@@ -204,16 +203,17 @@ class BaseDeDonneesViewSet(ModelViewSet):
     
             if not base_de_donnees_serializer.is_valid():
                 return Response({'detail': 'Données invalides'}, status = status.HTTP_400_BAD_REQUEST)
-            # get file in base_de_donnees_serializer.data.get("fichier_bd") and transform it to dataframe
-             # TODO : get the file and convert it to dataframe
-            data = pd.read_csv(fichier_bd, header=None)
-            # get time now and convert it to string and add to database name
-            time = str(datetime.datetime.now().strftime(
-                "%Y-%m-%d %H:%M:%S")).replace(":", "_").replace(".", "_").replace(" ", "_").replace("-", "_")
-            DBFunctions.insert_dataframe_into_postgresql_table(data, base_de_donnees_serializer.data.get("nom_base_de_donnees")+time)
-    
+            # for test purpose
+            """
+            base_de_donnees = base_de_donnees_serializer.save()
+                # chemin_fichier, sep, header=None, table_name=''
+            table_creation_result, df, db_name = DataInsertionStep.data_insertion(
+                base_de_donnees.fichier_bd.path, ';', False, base_de_donnees_serializer.data.get("nom_base_de_donnees"))
+            
+            print(f"table_creation_result : {table_creation_result}")
+            """
             return Response(base_de_donnees_serializer.data, status=status.HTTP_201_CREATED)
-    
+     
 
 
 class DiagnosticViewSet(APIView):
@@ -279,6 +279,7 @@ class DiagnosticViewSet(APIView):
 
         if base_de_donnees_data :
             if fichier_bd :
+                #TODO add projet
                 base_de_donnees_serializer = BaseDeDonneesSerializer(
                         data=base_de_donnees_data
                     )
@@ -296,17 +297,18 @@ class DiagnosticViewSet(APIView):
              
             diagnostic = Diagnostic.objects.create(
                 base_de_donnees=base_de_donnees,
-                utilisateur=utilisateur, 
                 parametre_diagnostic = critere_instance
             )
 
             chemin_fichier_csv = base_de_donnees.fichier_bd.path
-
-            df = pd.read_csv(chemin_fichier_csv)
-
-            # TODO : Exécuter la fonction de Diallo
-
-            table_creation_result = DBFunctions.insert_dataframe_into_postgresql_table(df, base_de_donnees.nom_base_de_donnees)
+            #type of file
+            type_file = "CSV"
+            
+            #chemin_fichier, sep, header=None, table_name=''
+            table_creation_result, df, db_name = DataInsertionStep.data_insertion(
+                chemin_fichier_csv, ';', False, base_de_donnees.nom_base_de_donnees,type_file)
+            
+            print(f"table_creation_result : {table_creation_result}")
 
             if table_creation_result == 0 :
 
@@ -314,7 +316,8 @@ class DiagnosticViewSet(APIView):
 
                     for i in range(len(list(df.columns))):
                         col = "col"+str(i+1)
-                        result_nb_nulls = DBFunctions.executer_fonction_postgresql('NombreDeNULLs', base_de_donnees.nom_base_de_donnees, col)[0]
+                        result_nb_nulls = DBFunctions.executer_fonction_postgresql(
+                            'NombreDeNULLs', db_name, col)[0]
                         print(f"nombre de valeurs nulles pour la colonne {col} {result_nb_nulls}")
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS" :
@@ -634,3 +637,7 @@ class ProjetViewSet(ModelViewSet):
 
         queryset = Projet.objects.all()
         return queryset
+    
+    
+
+
