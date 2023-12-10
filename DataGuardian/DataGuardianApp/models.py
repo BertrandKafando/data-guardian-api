@@ -161,7 +161,7 @@ class BaseDeDonnees(models.Model):
             ],
         )
     
-    Projet = models.ForeignKey(Projet,related_name="base_de_donnees", on_delete=models.CASCADE, null=True, blank=True)
+    projet = models.ForeignKey(Projet,related_name="base_de_donnees", on_delete=models.CASCADE, null=True, blank=True)
 
 
     def __str__(self):
@@ -254,6 +254,7 @@ class MetaColonne(models.Model):
     nombre_init_cap = models.IntegerField(null=True, blank=True)
     col_min = models.CharField(max_length=100, null=True, blank=True)
     col_max = models.CharField(max_length=100, null=True, blank=True)
+    dependances = models.CharField(max_length=200, null=True, blank=True)
     meta_table = models.ForeignKey(MetaTable,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
     meta_special_car = models.ForeignKey(MetaSpecialCar,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
     meta_anomalie = models.ForeignKey(MetaAnomalie,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)

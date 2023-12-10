@@ -228,20 +228,18 @@ class DiagnosticViewSet(APIView):
 
     def get(self, request):
 
-        user = request.user
-        current_user = Utilisateur.objects.filter(
-            compte__identifiant=user.username
-        ).first()
 
-        if current_user :
-            
-            queryset = Diagnostic.objects.filter(Utilisateur=current_user)
+        bd_id = int(self.request.query_params.get('bd_id'))
+        if bd_id : 
+
+            bd_instance = BaseDeDonnees.objects.get(id=bd_id)
+            queryset = Diagnostic.objects.filter(base_de_donnees=bd_instance)
         
         else : 
 
             queryset = Diagnostic.objects.all()
 
-        serializer = DiagnosticSerializer(queryset , many=True)
+        serializer = DiagnosticSerializer(queryset, many=True)
         response_data = serializer.data
 
         return Response(response_data,status=status.HTTP_200_OK)
@@ -345,7 +343,9 @@ class DiagnosticViewSet(APIView):
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN" :
 
-                    # TODO : add function that check for the 1st Normal form
+                    # TODO : check if the column is not a comment then check for the 1st FN
+
+                    # we have the code
 
                     pass
 
@@ -353,8 +353,8 @@ class DiagnosticViewSet(APIView):
                     pass
 
                 if parametre_diagnostic == "ALL" :
-                    # répetition de colonne
-                    # dépendance fonctionnelle
+                    # répétition de colonne : Ok
+                    # dépendance fonctionnelle : TODO
                     # autres
                     pass
 
@@ -550,7 +550,7 @@ class ProjetViewSet(ModelViewSet):
             queryset = Projet.objects.filter(utilisateur=current_user)
         else:
             queryset = Projet.objects.all()
-            
+
         return queryset
     
 

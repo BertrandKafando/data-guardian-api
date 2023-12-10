@@ -217,7 +217,9 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
         if fichier : 
             validated_data['nom_fichier'] = fichier.name
             validated_data['taille_fichier'] = str(round(fichier.size / (1024 * 1024), 6)) + "MB"
-
+            time = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    ).replace(":", "").replace(".", "").replace(" ", "").replace("-", "")
+            validated_data['nom_base_de_donnees'] =  fichier.name.split(".")[0].strip() + time          
 
         base_de_donnees = BaseDeDonnees.objects.create( fichier_bd = fichier, **validated_data)
 
@@ -226,7 +228,6 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         
-        print("validated_data")
         fichier = validated_data.pop('fichier_bd', None)
          
         if fichier:

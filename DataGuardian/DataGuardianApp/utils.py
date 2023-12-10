@@ -295,10 +295,8 @@ class DataInsertionStep:
             return -1
         else:
             return -1
-        # get time now and convert it to string and add to database name
-        time = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                   ).replace(":", "_").replace(".", "_").replace(" ", "_").replace("-", "_")
-        db_name = table_name + time
+
+        db_name = table_name 
 
         # TODO : 1FN
         data = DataSplitInsertionFromFileFunctions.verify1FN(data)
