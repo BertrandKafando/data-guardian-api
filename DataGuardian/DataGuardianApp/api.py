@@ -203,28 +203,9 @@ class BaseDeDonneesViewSet(ModelViewSet):
             fichier_bd = request.data.get("fichier_bd", None)
             base_de_donnees_serializer=BaseDeDonneesSerializer(data=request.data)
             
-    
             if not base_de_donnees_serializer.is_valid():
                 return Response({'detail': 'Données invalides'}, status = status.HTTP_400_BAD_REQUEST)
-            # for test purpose
-            """
-            base_de_donnees = base_de_donnees_serializer.save()
-                # chemin_fichier, sep, header=None, table_name=''
-            table_creation_result, df, db_name = DataInsertionStep.data_insertion(
-                base_de_donnees.fichier_bd.path, ';', False, base_de_donnees_serializer.data.get("nom_base_de_donnees"))
             
-            print(f"table_creation_result : {table_creation_result}")
-            """
-            return Response(base_de_donnees_serializer.data, status=status.HTTP_201_CREATED)
-     
-            # get file in base_de_donnees_serializer.data.get("fichier_bd") and transform it to dataframe
-             # TODO : get the file and convert it to dataframe
-            data = pd.read_csv(fichier_bd, header=None)
-            # get time now and convert it to string and add to database name
-            time = str(datetime.datetime.now().strftime(
-                "%Y-%m-%d %H:%M:%S")).replace(":", "_").replace(".", "_").replace(" ", "_").replace("-", "_")
-            DBFunctions.insert_dataframe_into_postgresql_table(data, base_de_donnees_serializer.data.get("nom_base_de_donnees")+time)
-    
             return Response(base_de_donnees_serializer.data, status=status.HTTP_201_CREATED)
     
 
@@ -269,30 +250,12 @@ class DiagnosticViewSet(APIView):
     @swagger_auto_schema(request_body=DiagnosticSerializer)
     def post(self, request, *args, **kwargs):
 
-
-        result_nb_rows = DBFunctions.executer_fonction_postgresql('NombreDeLignes', 'Clients')
-        result_nb_nulls = DBFunctions.executer_fonction_postgresql('NombreDeNULLs','Clients','ADNCLI')
-        print(result_nb_rows)
-        print(result_nb_nulls)
-
-
-
-
-        print(request.data)
-
         diagnostic_serializer=DiagnosticSerializer(data=request.data)
 
         if not diagnostic_serializer.is_valid():
             return Response({'detail': 'Données invalides'}, status = status.HTTP_400_BAD_REQUEST)
-    
 
         diagnostic_data = diagnostic_serializer.data
-
-        
-        user = request.user
-        utilisateur = Utilisateur.objects.filter(
-            compte__identifiant=user.username
-        ).first()
 
         parametre_diagnostic = diagnostic_data.pop("parametre_diagnostic")
 
@@ -302,7 +265,7 @@ class DiagnosticViewSet(APIView):
 
         if base_de_donnees_data :
             if fichier_bd :
-                #TODO add projet
+
                 base_de_donnees_serializer = BaseDeDonneesSerializer(
                         data=base_de_donnees_data
                     )
@@ -320,7 +283,6 @@ class DiagnosticViewSet(APIView):
              
             diagnostic = Diagnostic.objects.create(
                 base_de_donnees=base_de_donnees,
-                utilisateur=utilisateur, 
                 parametre_diagnostic = critere_instance
             )
 
@@ -331,8 +293,6 @@ class DiagnosticViewSet(APIView):
             table_creation_result, df, db_name = DataInsertionStep.data_insertion(
                 chemin_fichier_csv, ';', False, base_de_donnees.nom_base_de_donnees,type_file)
             
-            print(f"table_creation_result : {table_creation_result}")
-
             df = pd.read_csv(chemin_fichier_csv)
 
             table_creation_result = DBFunctions.insert_dataframe_into_postgresql_table(df, base_de_donnees.nom_base_de_donnees)
@@ -364,7 +324,6 @@ class DiagnosticViewSet(APIView):
                         col = "col"+str(i+1)
                         result_nb_nulls = DBFunctions.executer_fonction_postgresql(
                             'NombreDeNULLs', db_name, col)[0]
-                        print(f"nombre de valeurs nulles pour la colonne {col} {result_nb_nulls}")
 
                     DBFunctions.check_nulls(df.columns, meta_table, db_name)
 
@@ -398,8 +357,6 @@ class DiagnosticViewSet(APIView):
                     # dépendance fonctionnelle
                     # autres
                     pass
-
-
 
             else :
                 pass
@@ -579,12 +536,21 @@ class ProjetViewSet(ModelViewSet):
     #         self.permission_classes= [IsCustomerAuthenticated ]
     #     return [permission() for permission in self.permission_classes]
 
-    nlp_fr = spacy.load("fr_core_news_md")
-    nlp_en = spacy.load("en_core_web_md")
+    # nlp_fr = spacy.load("fr_core_news_md")
+    # nlp_en = spacy.load("en_core_web_md")
 
     def get_queryset(self):
 
-        queryset = Projet.objects.all()
+        user = self.request.user
+        current_user = Utilisateur.objects.filter(
+            compte__identifiant=user.username
+        ).first()
+ 
+        if current_user:
+            queryset = Projet.objects.filter(utilisateur=current_user)
+        else:
+            queryset = Projet.objects.all()
+            
         return queryset
     
 
