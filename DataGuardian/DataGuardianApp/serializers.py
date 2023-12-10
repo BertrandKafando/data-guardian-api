@@ -177,6 +177,7 @@ class UtilisateurSerializer(serializers.ModelSerializer):
 
         if 'compte' in validated_data :
             compte = validated_data.pop('compte')
+            compte.pop("mot_de_passe")
 
         if 'role' in validated_data :
             role = validated_data.pop('role')
@@ -212,7 +213,6 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
 
         fichier = validated_data.pop('fichier_bd', None)
-        print("validated_data")
 
         if fichier : 
             validated_data['nom_fichier'] = fichier.name
@@ -301,18 +301,13 @@ class MetaTousContraintesSerializer(serializers.ModelSerializer):
 
 class MetaColonneSerializer(serializers.ModelSerializer):
 
+    meta_anomalie = MetaAnomalieSerializer()
+    contraintes = MetaTousContraintesSerializer(many=True)
+
     class Meta:
         model = MetaColonne
         fields = '__all__'
         
-class ProjetSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = Projet
-        fields = '__all__'
-        
-
-
 class ProjetSerializer(serializers.ModelSerializer):
 
     class Meta:

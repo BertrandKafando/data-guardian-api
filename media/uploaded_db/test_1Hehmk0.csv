@@ -1,0 +1,51 @@
+Nom,Prenom,Age
+Dupont,NULL,32
+Martin,Pierre,45
+Lefevre,Sophie,28
+Dubois,Jean,62
+Moreau,Isaaabelle,37
+Lefevre,Pierre,52
+Dubois,NULL,22
+Martin,Sophie,41
+Dupont,Jean,29
+Mr   Moreau,Pieeerre,50
+Mr  Dubois,Isabelle,34
+Lefevre  ,JJJean,59
+Martin,Marie,26
+Moreau,Sophie,47
+Dupont,Isabelle,39
+Martin,Jean  ,56
+Dubois   Mr,Pierre,42
+Lefevre,Isabelle,31
+Moreau,Marie,48
+Dupont,Sophie,27
+Martin,Pierre,35
+Lefevre,Maaarie,23
+Dubois,Sophie,55
+Moreau,Jean,36
+Martin,Isaaabelle,44
+Lefevre,Pierre,33
+Dupont,Jean,21
+Dubois,Marie,40
+NULL,Sophie,30
+Lefevre,Pierre,46
+Martin,Isabelle,57
+Dupont,Jean,24
+Dubois,Sophie,53
+NULL,Marie,38
+Lefevre,Pierre,58
+Martin,Isabelle,25
+Dupont,Jean,49
+Dubois,Pierre,29
+Moreau,Marie,54
+NULL,Sophie,22
+Martin,Isabelle,31
+Dupont,Jean,43
+Dubois,Pierre,60
+Moreau,Marie,26
+Lefevre,Sophie,37
+Martin,Isabelle,28
+Dupont,Jean,51
+Dubois,NULL,34
+Moreau,Marie,42
+Lefevre,NULL,55

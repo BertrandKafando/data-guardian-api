@@ -63,7 +63,11 @@ BEGIN
     Query := 'SELECT COUNT (*) FROM ' || NOMTAB || ' WHERE ' ||  Nom_COL || ' IS NULL';
 
     IF (TypeDesColonne(NOMTAB, NOM_COL) = 'character varying') THEN
+<<<<<<< HEAD
         Query := Query || ' OR (' || Nom_COL || '  IN (''MISSINGVALUE'',''NULL'', ''-'', ''='', ''!'', ''?'',''nan'', ''''))';
+=======
+        Query := Query || ' OR (' || Nom_COL || '  IN (''MISSINGVALUE'',''NULL'', ''-'', ''='', ''!'', ''?'', ''''))';
+>>>>>>> 1b87217 (adding functions and procedures creations on migration done)
     END IF;
     EXECUTE Query INTO NbValNulles;
     RETURN NbValNulles; 
@@ -699,7 +703,7 @@ BEGIN
         v_column_value := COALESCE(v_column_value, '');
 
         -- Check if the value does not match the regular expression
-        IF v_column_value !~ p_regex THEN
+        IF NOT v_column_value !~ p_regex THEN
             -- Increment the counter
             v_count := v_count + 1;
         END IF;

@@ -103,7 +103,6 @@ class Projet(models.Model):
     __repr__ = __str__
 
 
-
    
 class BaseDeDonnees(models.Model):
 
@@ -212,12 +211,13 @@ class MetaTable(models.Model):
         return self.nom_table
 
 
-# class MetaSpecialCar(models.Model):
+class MetaSpecialCar(models.Model):
 
-#     caracteres_speciaux = models.CharField(max_length=500)
+    caracteres_speciaux = models.CharField(max_length=500)
 
-#     def __str__(self):
-#         return self.caracteres_speciaux
+    def __str__(self):
+        return self.caracteres_speciaux
+        
     
 class MetaTousContraintes(models.Model):
     nom_contrainte = models.CharField(max_length=100)
@@ -231,7 +231,7 @@ class MetaTousContraintes(models.Model):
 
 class MetaAnomalie(models.Model):
     nom_anomalie = models.CharField(max_length=50)
-    valeur_trouvee = models.CharField(max_length=300, null=True, blank=True)
+    valeur_trouvee = models.IntegerField(null=True, blank=True)
 
     def __str__(self):
         return self.nom_anomalie
@@ -255,7 +255,7 @@ class MetaColonne(models.Model):
     col_min = models.CharField(max_length=100, null=True, blank=True)
     col_max = models.CharField(max_length=100, null=True, blank=True)
     meta_table = models.ForeignKey(MetaTable,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
-    #meta_special_car = models.ForeignKey(MetaSpecialCar,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
+    meta_special_car = models.ForeignKey(MetaSpecialCar,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
     meta_anomalie = models.ForeignKey(MetaAnomalie,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
     contraintes = models.ManyToManyField(MetaTousContraintes, related_name='meta_colonne', symmetrical=False, blank=True)
 

@@ -218,16 +218,16 @@ class BaseDeDonneesViewSet(ModelViewSet):
 
 class DiagnosticViewSet(APIView):
 
-    def get_permissions(self):
-        if self.request.method == "GET":
-            self.permission_classes = [IsCustomerAuthenticated | IsAdminAuthenticated ]
-        elif self.request.method == "POST":
-            self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
-        elif self.request.method == "PUT" or self.request.method == "PATCH":
-            self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
-        elif self.request.method == "DELETE":
-            self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
-        return [permission() for permission in self.permission_classes]
+    # def get_permissions(self):
+    #     if self.request.method == "GET":
+    #         self.permission_classes = [IsCustomerAuthenticated | IsAdminAuthenticated ]
+    #     elif self.request.method == "POST":
+    #         self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
+    #     elif self.request.method == "PUT" or self.request.method == "PATCH":
+    #         self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
+    #     elif self.request.method == "DELETE":
+    #         self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
+    #     return [permission() for permission in self.permission_classes]
 
     serializer_class = DiagnosticSerializer 
 
@@ -235,7 +235,6 @@ class DiagnosticViewSet(APIView):
     def get(self, request):
 
         user = request.user
-        print(user)
         current_user = Utilisateur.objects.filter(
             compte__identifiant=user.username
         ).first()
@@ -256,6 +255,17 @@ class DiagnosticViewSet(APIView):
 
     @swagger_auto_schema(request_body=DiagnosticSerializer)
     def post(self, request, *args, **kwargs):
+
+
+        result_nb_rows = DBFunctions.executer_fonction_postgresql('NombreDeLignes', 'Clients')
+        result_nb_nulls = DBFunctions.executer_fonction_postgresql('NombreDeNULLs','Clients','ADNCLI')
+        print(result_nb_rows)
+        print(result_nb_nulls)
+
+
+
+
+        print(request.data)
 
         diagnostic_serializer=DiagnosticSerializer(data=request.data)
 
@@ -303,7 +313,6 @@ class DiagnosticViewSet(APIView):
             chemin_fichier_csv = base_de_donnees.fichier_bd.path
             #type of file
             type_file = "CSV"
-            
             #chemin_fichier, sep, header=None, table_name=''
             table_creation_result, df, db_name = DataInsertionStep.data_insertion(
                 chemin_fichier_csv, ';', False, base_de_donnees.nom_base_de_donnees,type_file)
@@ -311,6 +320,23 @@ class DiagnosticViewSet(APIView):
             print(f"table_creation_result : {table_creation_result}")
 
             if table_creation_result == 0 :
+
+                meta_table = MetaTable()
+                meta_table.base_de_donnees = base_de_donnees
+                meta_table.nom_table = base_de_donnees.nom_base_de_donnees
+
+                result_nb_rows = DBFunctions.executer_fonction_postgresql(
+                    'NombreDeLignes', db_name)
+                result_nb_cols = DBFunctions.executer_fonction_postgresql(
+                    'NombreDeColonnes', db_name)
+
+                if type(result_nb_rows) != int :
+                    meta_table.nombre_lignes = result_nb_rows[0]
+
+                if type(result_nb_cols) != int :
+                    meta_table.nombre_colonnes = result_nb_cols[0]
+
+                meta_table.save()
 
                 if parametre_diagnostic == "VAL_MANQ" :
 
@@ -320,28 +346,43 @@ class DiagnosticViewSet(APIView):
                             'NombreDeNULLs', db_name, col)[0]
                         print(f"nombre de valeurs nulles pour la colonne {col} {result_nb_nulls}")
 
+                    DBFunctions.check_nulls(df.columns, meta_table, db_name)
+
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS" :
-                    pass
+
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(
+                        df.columns, meta_table, db_name)
+
+                    DBFunctions.check_constraints(
+                        meta_cols_instance_nulls, db_name)
+
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN" :
+
+                    # TODO : add function that check for the 1st Normal form
+
                     pass
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN_DUPLICATIONS" :
                     pass
 
                 if parametre_diagnostic == "ALL" :
+                    # répetition de colonne
+                    # dépendance fonctionnelle
+                    # autres
                     pass
 
 
-                # TODO : Insert Meta données
 
             else :
                 pass
 
+            diagnostic.status = Diagnostic.TERMINE
             diagnostic_data = DiagnosticSerializer(diagnostic).data
+            
 
         return Response({
-            "diagnostic" : diagnostic_data,
+            "diagnostic" : diagnostic_data
         }, status=status.HTTP_200_OK)
  
 
@@ -511,133 +552,75 @@ class ProjetViewSet(ModelViewSet):
     #         self.permission_classes= [IsCustomerAuthenticated ]
     #     return [permission() for permission in self.permission_classes]
 
-
-    def get_queryset(self):
-
-        queryset = Projet.objects.all()
-        return queryset
-    
-    
-    
-
-
-
-
-
-
-class ProjetViewSet(ModelViewSet):
-    serializer_class= ProjetSerializer
-
-    # def get_permissions(self):
-    #     if self.request.method == "GET":
-    #         self.permission_classes = [IsCustomerAuthenticated]
-    #     elif self.request.method == "POST":
-    #         self.permission_classes= [IsCustomerAuthenticated ]
-    #     elif self.request.method == "PUT" or self.request.method == "PATCH":
-    #         self.permission_classes= [IsCustomerAuthenticated ]
-    #     elif self.request.method == "DELETE":
-    #         self.permission_classes= [IsCustomerAuthenticated ]
-    #     return [permission() for permission in self.permission_classes]
-
-
-    def get_queryset(self):
-
-        queryset = Projet.objects.all()
-        return queryset
-    
-    
-    
-
-
-
-
-
-class SemanticInferenceView(APIView):
-
-    http_method_names = ["head","post"]
-
     nlp_fr = spacy.load("fr_core_news_md")
     nlp_en = spacy.load("en_core_web_md")
 
-    def determine_type_by_regex(texte, regex_patterns):
-        for type_entite, pattern in regex_patterns.items():
-            if re.search(pattern, texte, re.IGNORECASE):
-                return type_entite
-        return None
-    
-
-    def post(self, request, *args, **kwargs):
-
-
-        engine = create_engine(f'postgresql://{env("POSTGRES_USER")}:{env("POSTGRES_PASSWORD")}/{env("POSTGRES_DB")}')
-        conn = engine.connect()
-
-        # Définition des expressions régulières
-        regex_patterns = {
-            'EMAIL': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
-            'PHONE': r'\b\d{10}\b',
-            'DATE': r'\b\d{1,2}/\d{1,2}/\d{4}\b|\b\d{4}-\d{1,2}-\d{1,2}\b|\b\d{1,2} (Janvier|Février|Mars|Avril|Mai|Juin|Juillet|Août|Septembre|Octobre|Novembre|Décembre) \d{4}\b',
-            'ADDRESS': r'\b(?:Rue|Avenue|Boulevard|Place|Allée|Chemin|Voie|Quai|Square|Impasse)\s[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b',
-            'POSTAL_CODE': r'\b\d{4,5}\b',
-            'GENRE': r'\b(Femme|F|femme|f|Homme|H|homme|h|M|Mâle|male|Femelle|femelle|Unspecified|unspecified|Non-binary|non-binary|NB|nb)\b'
-        }
-
-        df = pd.read_sql_query(con=conn, sql=sql_text("SELECT * FROM CLIENTS"))
-
-        # Compteur pour chaque type d'entité par colonne
-        entites_par_colonne = {col: Counter() for col in df.columns}
-
-        # Analyse des colonnes
-        for col in df.columns:
-            for item in df[col].dropna():
-                texte = str(item).strip()
-                if texte:
-
-                    # Vérifier avec les regex
-                    regex_type = SemanticInferenceView.determine_type_by_regex(texte, regex_patterns)
-                    if regex_type:
-                        entites_par_colonne[col][regex_type] += 1
-                        continue
-
-                    # Sinon, utiliser l'analyse NER
-                    try:
-                        langue = detect(texte) 
-                        if langue != 'fr' and langue != 'en' :
-                            langue = 'fr'
-                    except LangDetectException:
-                        langue = 'en'  
-
-                    nlp = SemanticInferenceView.nlp_fr if langue == 'fr' else SemanticInferenceView.nlp_en
-                    doc = nlp(texte)
-                    for ent in doc.ents:
-                        entites_par_colonne[col][ent.label_] += 1
-
-        type_dominant_par_colonne = {col: entites.most_common(1)[0][0] if entites else 'Aucun' for col, entites in entites_par_colonne.items()}
-
-        return Response({'result':type_dominant_par_colonne}, status=status.HTTP_200_OK)
-    
-
-
-class ProjetViewSet(ModelViewSet):
-    serializer_class= ProjetSerializer
-
-    # def get_permissions(self):
-    #     if self.request.method == "GET":
-    #         self.permission_classes = [IsCustomerAuthenticated]
-    #     elif self.request.method == "POST":
-    #         self.permission_classes= [IsCustomerAuthenticated ]
-    #     elif self.request.method == "PUT" or self.request.method == "PATCH":
-    #         self.permission_classes= [IsCustomerAuthenticated ]
-    #     elif self.request.method == "DELETE":
-    #         self.permission_classes= [IsCustomerAuthenticated ]
-    #     return [permission() for permission in self.permission_classes]
-
-
     def get_queryset(self):
 
         queryset = Projet.objects.all()
         return queryset
-    
+
+# class SemanticInferenceView(APIView):
+
+#     http_method_names = ["head","post"]
+
+#     nlp_fr = spacy.load("fr_core_news_md")
+#     nlp_en = spacy.load("en_core_web_md")
+
+#     def determine_type_by_regex(texte, regex_patterns):
+#         for type_entite, pattern in regex_patterns.items():
+#             if re.search(pattern, texte, re.IGNORECASE):
+#                 return type_entite
+#         return None
     
 
+#     def post(self, request, *args, **kwargs):
 
+
+#         engine = create_engine(f'postgresql://{env("POSTGRES_USER")}:{env("POSTGRES_PASSWORD")}/{env("POSTGRES_DB")}')
+#         conn = engine.connect()
+
+#         # Définition des expressions régulières
+#         regex_patterns = {
+#             'EMAIL': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+#             'PHONE': r'\b\d{10}\b',
+#             'DATE': r'\b\d{1,2}/\d{1,2}/\d{4}\b|\b\d{4}-\d{1,2}-\d{1,2}\b|\b\d{1,2} (Janvier|Février|Mars|Avril|Mai|Juin|Juillet|Août|Septembre|Octobre|Novembre|Décembre) \d{4}\b',
+#             'ADDRESS': r'\b(?:Rue|Avenue|Boulevard|Place|Allée|Chemin|Voie|Quai|Square|Impasse)\s[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b',
+#             'POSTAL_CODE': r'\b\d{4,5}\b',
+#             'GENRE': r'\b(Femme|F|femme|f|Homme|H|homme|h|M|Mâle|male|Femelle|femelle|Unspecified|unspecified|Non-binary|non-binary|NB|nb)\b'
+#         }
+
+#         df = pd.read_sql_query(con=conn, sql=sql_text("SELECT * FROM CLIENTS"))
+
+#         # Compteur pour chaque type d'entité par colonne
+#         entites_par_colonne = {col: Counter() for col in df.columns}
+
+#         # Analyse des colonnes
+#         for col in df.columns:
+#             for item in df[col].dropna():
+#                 texte = str(item).strip()
+#                 if texte:
+
+#                     # Vérifier avec les regex
+#                     regex_type = SemanticInferenceView.determine_type_by_regex(texte, regex_patterns)
+#                     if regex_type:
+#                         entites_par_colonne[col][regex_type] += 1
+#                         continue
+
+#                     # Sinon, utiliser l'analyse NER
+#                     try:
+#                         langue = detect(texte) 
+#                         if langue != 'fr' and langue != 'en' :
+#                             langue = 'fr'
+#                     except LangDetectException:
+#                         langue = 'en'  
+
+#                     nlp = SemanticInferenceView.nlp_fr if langue == 'fr' else SemanticInferenceView.nlp_en
+#                     doc = nlp(texte)
+#                     for ent in doc.ents:
+#                         entites_par_colonne[col][ent.label_] += 1
+
+#         type_dominant_par_colonne = {col: entites.most_common(1)[0][0] if entites else 'Aucun' for col, entites in entites_par_colonne.items()}
+
+#         return Response({'result':type_dominant_par_colonne}, status=status.HTTP_200_OK)
+    
