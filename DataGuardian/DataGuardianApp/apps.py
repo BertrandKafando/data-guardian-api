@@ -2,13 +2,13 @@ from django.apps import AppConfig
 from django.db.models.signals import post_migrate
 from django.dispatch import receiver
 from django.conf import settings
-
 import subprocess
 import environ
 import os
 
 
 BASE_DIR = settings.BASE_DIR
+OS_PLATFORM = settings.OS_PLATFORM
 env = environ.Env()
 environ.Env.read_env()
 
@@ -25,8 +25,13 @@ class DataguardianappConfig(AppConfig):
 def run_sql_scripts(sender, **kwargs):
 
     print("Exécution des scripts SQL pour la création des fonctions et procédures...")
-    functions_script_path = os.path.join(BASE_DIR, "DataGuardian/DataGuardianApp/db_configs/functions.sql")
-    test_data_script_path = os.path.join(BASE_DIR, "DataGuardian/DataGuardianApp/db_configs/test_data.sql")
+    if OS_PLATFORM =="MACOS" or OS_PLATFORM =="LINUX": 
+        functions_script_path = os.path.join(BASE_DIR, "DataGuardian/DataGuardianApp/db_configs/functions.sql")
+        test_data_script_path = os.path.join(BASE_DIR, "DataGuardian/DataGuardianApp/db_configs/test_data.sql")
+
+    if OS_PLATFORM =="WINDOWS" : 
+        functions_script_path = os.path.join(BASE_DIR, "DataGuardian\\DataGuardianApp\\db_configs\\functions.sql")
+        test_data_script_path = os.path.join(BASE_DIR, "DataGuardian\\DataGuardianApp\\db_configs\\test_data.sql")
 
     try:
         subprocess.run(['psql', '-U', env("POSTGRES_USER"), '-d', env("POSTGRES_DB"), '-a', '-f', functions_script_path])
