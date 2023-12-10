@@ -5,6 +5,8 @@ from django.conf import settings
 import subprocess
 import environ
 import os
+import pathlib
+
 
 
 BASE_DIR = settings.BASE_DIR
@@ -29,14 +31,18 @@ def run_sql_scripts(sender, **kwargs):
         functions_script_path = os.path.join(BASE_DIR, "DataGuardian/DataGuardianApp/db_configs/functions.sql")
         test_data_script_path = os.path.join(BASE_DIR, "DataGuardian/DataGuardianApp/db_configs/test_data.sql")
 
-    if OS_PLATFORM =="WINDOWS" : 
-        functions_script_path = os.path.join(BASE_DIR, "DataGuardian\\DataGuardianApp\\db_configs\\functions.sql")
-        test_data_script_path = os.path.join(BASE_DIR, "DataGuardian\\DataGuardianApp\\db_configs\\test_data.sql")
+    if OS_PLATFORM =="WINDOWS" :
+        functions_script_path = os.path.join(BASE_DIR, "DataGuardian\DataGuardianApp\db_configs\functions.sql")
+        functions_script_path = pathlib.PureWindowsPath(functions_script_path).as_posix()
+        test_data_script_path = os.path.join(BASE_DIR, "DataGuardian\DataGuardianApp\db_configs\test_data.sql")
+        test_data_script_path = pathlib.PureWindowsPath(test_data_script_path).as_posix()
 
     try:
-        subprocess.run(['psql', '-U', env("POSTGRES_USER"), '-d', env("POSTGRES_DB"), '-a', '-f', functions_script_path])
-        print("Scripts SQL exécutés avec succès.")
-        subprocess.run(['psql', '-U', env("POSTGRES_USER"), '-d', env("POSTGRES_DB"), '-a', '-f', test_data_script_path])
-        print("Création des données de test réalisé avec succès.")
+        if os.path.isfile(functions_script_path):
+            subprocess.run(['psql', '-U', env("POSTGRES_USER"), '-d', env("POSTGRES_DB"), '-a', '-f', functions_script_path])
+            print("Scripts SQL exécutés avec succès.")
+        if os.path.isfile(test_data_script_path):
+            subprocess.run(['psql', '-U', env("POSTGRES_USER"), '-d', env("POSTGRES_DB"), '-a', '-f', test_data_script_path])
+            print("Création des données de test réalisé avec succès.")
     except Exception as e:
         print(f"Erreur lors de l'exécution des scripts SQL : {e}")
