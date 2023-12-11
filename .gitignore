@@ -175,3 +175,4 @@ media/uploaded_db/
 # migrations
 DataGuardian/migrations/
 
+**/migrations/*
