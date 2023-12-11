@@ -5,6 +5,7 @@ from django.conf import settings
 import subprocess
 import environ
 import os
+import pathlib
 
 
 
@@ -32,7 +33,9 @@ def run_sql_scripts(sender, **kwargs):
 
     if OS_PLATFORM =="WINDOWS" :
         functions_script_path = os.path.join(BASE_DIR, "DataGuardian\DataGuardianApp\db_configs\\functions.sql")
+        # functions_script_path = pathlib.PureWindowsPath(functions_script_path).as_posix()
         test_data_script_path = os.path.join(BASE_DIR, "DataGuardian\DataGuardianApp\db_configs\\test_data.sql")
+        # test_data_script_path = pathlib.PureWindowsPath(test_data_script_path).as_posix()
 
     try:
         if os.path.isfile(functions_script_path):
