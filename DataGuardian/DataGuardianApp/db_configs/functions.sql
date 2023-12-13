@@ -1011,63 +1011,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to compute the mean of numeric values in a column
-CREATE OR REPLACE FUNCTION compute_mean_numeric (Nom_COL VARCHAR, NOMTAB VARCHAR) RETURNS NUMERIC AS
-$$
-DECLARE
-  Query    VARCHAR(2000);
-  avg_num  NUMERIC(10,2);
-BEGIN 
-  Query := 'SELECT AVG(CASE WHEN ' || Nom_COL || ' IS NULL THEN 0 ELSE LENGTH(SUBSTRING(' || Nom_COL || ' FROM regexp_instr(' || Nom_COL || ', ''[[:digit:]]*$'') FOR LENGTH(' || Nom_COL || ') - regexp_instr(' || Nom_COL || ', ''[[:digit:]]*$'') + 1)) END) FROM ' || NOMTAB;
-  EXECUTE Query INTO avg_num;
-  RETURN avg_num; 
-END;
-$$ LANGUAGE plpgsql;
 
--- Function to compute the standard deviation of numeric values in a column
-CREATE OR REPLACE FUNCTION compute_std_numeric (Nom_COL VARCHAR, NOMTAB VARCHAR) RETURNS NUMERIC AS
-$$
-DECLARE
-  Query VARCHAR(2000);
-  std NUMERIC(10,2);
-BEGIN 
-  Query := 'SELECT STDDEV(TO_NUMBER(NVL(' || Nom_COL || ', ''0''))) FROM ' || NOMTAB;
-  EXECUTE Query INTO std;
-  RETURN std; 
-EXCEPTION
-  WHEN OTHERS THEN
-    RETURN -1;
-END;
-$$ LANGUAGE plpgsql;
 
--- Function to count outliers based on the z-score
-CREATE OR REPLACE FUNCTION count_outliers(NOMTAB VARCHAR, Nom_COL VARCHAR, z_threshold NUMERIC) RETURNS INTEGER AS
-$$
-DECLARE
-  Query VARCHAR(2000);
-  mean_num NUMERIC(10,2);
-  std_dev NUMERIC(10,2);
-  outlier_count INTEGER := 0;
-BEGIN
-  -- Calculate the mean and standard deviation
-  mean_num := compute_mean_numeric(Nom_COL, NOMTAB);
-  std_dev := compute_std_numeric(Nom_COL, NOMTAB);
-
-  -- Check if the mean and standard deviation calculations were successful
-  IF (mean_num = -1 OR std_dev = -1) THEN
-    RETURN -1; -- Replace -1 with the desired default value in case of an error.
-  END IF;
-
-  -- Calculate the z-score and count outliers
-  Query := 'SELECT COUNT(*) FROM ' || NOMTAB || ' WHERE ABS((TO_NUMBER(NVL(' || Nom_COL || ', ''0'')) - $1) / $2) > $3';
-  EXECUTE Query INTO outlier_count USING mean_num, std_dev, z_threshold;
-
-  RETURN outlier_count;
-EXCEPTION
-  WHEN OTHERS THEN
-    RETURN -1;
-END;
-$$ LANGUAGE plpgsql;
 
 
 -- Function to get the primary key of a table
@@ -1464,35 +1409,110 @@ END;
 $$ LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE FUNCTION estColonneDupliquee(tableName TEXT, columnName TEXT)
-RETURNS BOOLEAN AS $$
+CREATE OR REPLACE FUNCTION VerifierDuplication(tableName VARCHAR, columnName VARCHAR)
+RETURNS TABLE(duplicatedWith VARCHAR[]) AS $$
 DECLARE
-    colonneCible TEXT;
-    queryStr TEXT;
-    resultCount INTEGER;
-    columnType TEXT;
+    columnInfo RECORD;
+    otherColumnInfo RECORD;
+    isDuplicatedFlag BOOLEAN;
+    duplicatedColumns VARCHAR[];
 BEGIN
-    -- Obtenir le type de la colonne cible
-    SELECT data_type INTO columnType FROM information_schema.columns 
-    WHERE table_name = tableName AND column_name = columnName;
+    -- Get the information of the specified column
+    SELECT column_name::VARCHAR, ordinal_position, data_type INTO columnInfo
+    FROM information_schema.columns WHERE table_name = lower(tableName) AND column_name = lower(columnName);
 
-    FOR colonneCible IN
-        SELECT column_name FROM information_schema.columns
-        WHERE table_name = tableName AND column_name != columnName AND data_type = columnType
-    LOOP
-        -- Comparer seulement les colonnes de même type
-        queryStr := FORMAT('SELECT COUNT(*) FROM ((SELECT %I FROM %I EXCEPT SELECT %I FROM %I) UNION ALL (SELECT %I FROM %I EXCEPT SELECT %I FROM %I)) AS diff',
-                            columnName, tableName, colonneCible, tableName, colonneCible, tableName, columnName, tableName);
-
-        EXECUTE queryStr INTO resultCount;
-
-        -- Si aucune différence n'est trouvée, les colonnes sont considérées comme dupliquées
-        IF resultCount = 0 THEN
-            RETURN TRUE;
+    FOR otherColumnInfo IN SELECT column_name::VARCHAR FROM information_schema.columns WHERE table_name = lower(tableName) AND ordinal_position > columnInfo.ordinal_position
+        AND data_type = columnInfo.data_type LOOP
+        EXECUTE format('SELECT NOT EXISTS (SELECT 1 FROM %I WHERE (%I IS DISTINCT FROM %I) 
+        OR (%I IS NULL AND %I IS NOT NULL) OR (%I IS NOT NULL AND %I IS NULL))', tableName, columnInfo.column_name, otherColumnInfo.column_name, columnInfo.column_name, otherColumnInfo.column_name, 
+                                                    columnInfo.column_name, otherColumnInfo.column_name) INTO isDuplicatedFlag;
+        IF isDuplicatedFlag THEN
+            duplicatedColumns := array_append(duplicatedColumns, otherColumnInfo.column_name);
         END IF;
     END LOOP;
 
-    RETURN FALSE;
+    RETURN QUERY SELECT duplicatedColumns;
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION compute_mean_numeric(Nom_COL VARCHAR, NOMTAB VARCHAR) RETURNS NUMERIC AS
+$$
+DECLARE
+  Query    VARCHAR(2000);
+  avg_num  NUMERIC(10,2);
+BEGIN 
+  Query := 'SELECT AVG(' || Nom_COL || '::NUMERIC) FROM ' || NOMTAB;
+  EXECUTE Query INTO avg_num;
+  RETURN avg_num; 
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION compute_std_numeric (Nom_COL VARCHAR, NOMTAB VARCHAR) RETURNS NUMERIC AS
+$$
+DECLARE
+  Query VARCHAR(2000);
+  std NUMERIC(10,2);
+BEGIN 
+  Query := 'SELECT STDDEV(' || Nom_COL || '::NUMERIC) FROM ' || NOMTAB;
+  EXECUTE Query INTO std;
+  RETURN std; 
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN -1;
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION count_outliers(NOMTAB VARCHAR, Nom_COL VARCHAR, z_threshold NUMERIC) RETURNS INTEGER AS
+$$
+DECLARE
+    Query VARCHAR(2000);
+    mean_num NUMERIC(10,2);
+    std_dev NUMERIC(10,2);
+    outlier_count INTEGER := 0;
+    column_type VARCHAR;
+BEGIN
+
+    column_type := TypeDesColonne(NOMTAB, Nom_COL);
+    IF column_type NOT IN ('integer', 'bigint', 'numeric', 'real', 'double precision') THEN
+        RETURN -1; 
+    END IF;
+
+    -- calcule la moyenne et l'écart type
+    mean_num := compute_mean_numeric(Nom_COL, NOMTAB);
+    std_dev := compute_std_numeric(Nom_COL, NOMTAB);
+
+
+    --Calcule le z-score et compte les outliers
+    Query := 'SELECT COUNT(*) FROM ' || NOMTAB || ' WHERE ABS((' || Nom_COL || '::NUMERIC - $1) / $2) > $3';
+    EXECUTE Query INTO outlier_count USING mean_num, std_dev, z_threshold;
+
+    RETURN outlier_count;
+
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION COUNT_DOUBLONS(NomTab VARCHAR, AttributsCle TEXT DEFAULT '')
+RETURNS INT AS $$
+DECLARE
+    ConcatAttributsCle VARCHAR(1000);
+    DoublonsCount INT;
+    Query VARCHAR(1000);
+BEGIN
+    ConcatAttributsCle := REPLACE(AttributsCle, ',', ' || ');
+ 
+    -- Count the number of duplicates
+    Query := 'SELECT COUNT(*) FROM (
+                  SELECT ' || ConcatAttributsCle || ', COUNT(*) as count
+                  FROM ' || NomTab || '
+                  GROUP BY ' || ConcatAttributsCle || '
+                  HAVING COUNT(*) > 1
+              ) as duplicates';
+    EXECUTE Query INTO DoublonsCount;
+ 
+    RETURN DoublonsCount;
 END;
 $$ LANGUAGE plpgsql;
 

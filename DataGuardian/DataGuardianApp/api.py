@@ -291,9 +291,6 @@ class DiagnosticViewSet(APIView):
             table_creation_result, df, db_name = DataInsertionStep.data_insertion(
                 chemin_fichier_csv, ';', False, base_de_donnees.nom_base_de_donnees,type_file)
             
-            df = pd.read_csv(chemin_fichier_csv)
-
-            table_creation_result = DBFunctions.insert_dataframe_into_postgresql_table(df, base_de_donnees.nom_base_de_donnees)
 
             if table_creation_result == 0 :
 
@@ -319,7 +316,7 @@ class DiagnosticViewSet(APIView):
                 if parametre_diagnostic == "VAL_MANQ" :
 
                     for i in range(len(list(df.columns))):
-                        col = "col"+str(i+1)
+                        col = df.columns[i]   # "col"+str(i+1)
                         result_nb_nulls = DBFunctions.executer_fonction_postgresql(
                             'NombreDeNULLs', db_name, col)[0]
 
