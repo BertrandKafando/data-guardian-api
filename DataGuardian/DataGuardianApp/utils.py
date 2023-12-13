@@ -3,8 +3,12 @@ from django.db import connection, transaction
 import base64
 import threading
 from django.http import QueryDict
+from psycopg2.extras import execute_values
 import re
-
+import numpy as np
+import pandas as pd
+import datetime
+from .models import *
 class EmailThread(threading.Thread):
 
     def __init__(self, email):
@@ -69,18 +73,17 @@ class DBFunctions:
                     f"col{i+1} VARCHAR" for i in range(len(dataframe.columns)))
                 
                 cursor.execute(
-                    f"DROP TABLE IF EXISTS {table_name};")
-                
-                cursor.execute(
                     f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});")
 
                 # Disable constraint checks temporarily
                 with connection.constraint_checks_disabled():
-                    for i in range(dataframe.shape[0]):
+                    for i in range(0,dataframe.shape[0]):
                         row = list(dataframe.iloc[i, :])
-                        row = ', '.join(f"'{str(x)}'" for x in row)
-                        row = "(" + row + ")"
-                        cursor.execute(f"INSERT INTO {table_name} VALUES {row};")
+                        row = [val.item() if isinstance(val, np.generic)
+                               else val for val in row]
+                        placeholders = ", ".join(["%s"] * len(row))
+                        insert_query = f"INSERT INTO {table_name} VALUES ({placeholders});"
+                        cursor.execute(insert_query, row)
 
             return 0
 
@@ -112,3 +115,213 @@ class DBFunctions:
             nested_data['base_de_donnees']['fichier_bd'] = request.FILES['base_de_donnees[fichier_bd]']
 
         return nested_data
+
+    def check_nulls(columns, meta_table, nom_bd) : 
+
+        meta_col_instances = list()
+
+        for i in range(len(list(columns))) :
+
+            col = "col"+str(i+1)
+
+            meta_colonne = MetaColonne()
+            meta_colonne.nom_colonne = col
+            result_nb_nulls = DBFunctions.executer_fonction_postgresql('NombreDeNULLs', nom_bd, col)
+
+            if type(result_nb_nulls) != int :
+                meta_colonne.nombre_valeurs_manquantes = result_nb_nulls[0]
+                meta_colonne.meta_table = meta_table
+                meta_colonne.save()
+                meta_col_instances.append(meta_colonne)
+
+        return meta_col_instances
+    
+
+    def check_constraints(columns, nom_bd) : 
+
+        new_columns_instance = list()
+
+        for col_instance in columns :
+
+            # On suppose que toutes les règles varchars s'appliquent sur cette colonne (On a pas encore la possibilité de connaitre la sémantique)
+
+            contraintes = MetaTousContraintes.objects.filter(category__icontains="String")
+
+            for constraint in contraintes : 
+
+                result_count_values_not_matching_regex = DBFunctions.executer_fonction_postgresql('count_values_not_matching_regex', nom_bd, col_instance.nom_colonne, constraint.contrainte)
+
+                if type(result_count_values_not_matching_regex) != int :
+
+                    if result_count_values_not_matching_regex[0] != 0 :
+
+                        anomalie = MetaAnomalie()
+                        anomalie.nom_anomalie = constraint.nom_contrainte
+                        anomalie.valeur_trouvee = int(result_count_values_not_matching_regex[0])
+
+                        anomalie.save()
+
+                        col_instance.meta_anomalie = anomalie
+
+            col_instance.contraintes.add(*contraintes)
+            col_instance.save()
+            new_columns_instance.append(col_instance)
+
+        return new_columns_instance
+
+
+    def check_1FN(columns, nom_bd) : 
+
+        new_columns_instance = list()
+
+        for col_instance in columns :
+
+            result_1FN_checking = DBFunctions.executer_fonction_postgresql('isColumnIn1NF', str(nom_bd).lower(), str(col_instance.nom_colonne).lower())
+
+            anomalie = MetaAnomalie()
+
+            anomalie.nom_anomalie = "Premiere Forme normale"
+
+            if result_1FN_checking[0] == 'Yes' :
+                anomalie.valeur_trouvee = 1 #True
+
+            else :
+                anomalie.valeur_trouvee = 0 #False
+
+            anomalie.save()
+
+            col_instance.meta_anomalie = anomalie
+            col_instance.save()
+            new_columns_instance.append(col_instance)
+
+        return new_columns_instance
+     
+class DataSplitInsertionFromFileFunctions:
+    
+    def parse_file(file, sep, header=False):
+        data = []
+        try:
+            with open(file, 'r') as f:
+                lines = f.readlines()
+                if header:
+                    lines = lines[1:]  # Exclude header if present
+
+                incomplete_line = ''
+                for idx, line in enumerate(lines):
+                    line = line.strip()
+                    line = line[1:-2]
+                    row = line.split(sep)
+                    if idx != 0 and len(row) < len(data[0]):
+                        # Add the incomplete part to the last read line
+                        data[-1][-1] += f' {line}'
+                    else:
+                        data.append(row)
+
+            if header:
+                headers = data[0]
+                data = data[1:]
+            else:
+                # If no header, generate default column names
+                headers = [f"Column_{i}" for i in range(len(data[0]))]
+
+            # Transform into a DataFrame-like structure
+            res = {header: [] for header in headers}
+            for i, header in enumerate(headers):
+                for row in data:
+                    res[header].append(row[i])
+
+            return pd.DataFrame(res)
+
+        except Exception as e:
+            print(f"Error parsing file: {e}")
+            return -1
+
+        
+    
+    def upload_file_to_dataframe_json(file):
+        try:
+            df = pd.read_json(file)
+            return df
+        except Exception as e:
+            print(f"Error converting file to dataframe: {e}")
+            return -1
+       
+    
+    def verify1FN(dataframe):
+        # Check if there are any duplicate columns
+        if len(set(dataframe.columns)) != len(dataframe.columns):
+           # delete duplicate columns
+            dataframe = dataframe.loc[:, ~dataframe.columns.duplicated()]
+            
+        # Our checks 
+        dataframe = DataSplitInsertionFromFileFunctions.process_data(dataframe)
+        return dataframe
+    
+
+    # Fonction pour nettoyer les noms de colonnes
+    def clean_column_name(name):
+        return re.sub(r'[^0-9a-zA-Z_]', '_', name)
+
+    # Fonction pour compter le nombre moyen de mots dans une colonne
+    def average_word_count(series):
+        return series.str.split(' ').str.len().mean()
+
+
+
+    def process_data(df):
+
+        df.replace('[null]', None, inplace=True)
+
+        for col in df.columns.tolist():
+            str_and_space_rows = df[col].apply(
+                lambda x: isinstance(x, str) and ' ' in x)
+            if str_and_space_rows.sum() > 0.5 * len(df) and DataSplitInsertionFromFileFunctions.average_word_count(df[col]) <= 3:
+                original_non_null_count = df[col].notnull().sum()
+                expanded_cols = df[col].str.split(
+                    ' ', expand=True).add_prefix(col + '_')
+                valid_cols = []
+
+                # Identifier les colonnes divisées valides
+                for exp_col in expanded_cols:
+                    if expanded_cols[exp_col].notnull().sum() >= original_non_null_count * 0.5:
+                        valid_cols.append(expanded_cols[exp_col])
+
+                # Ajouter uniquement les colonnes valides au DataFrame
+                if valid_cols:
+                    valid_expanded_cols = pd.concat(valid_cols, axis=1)
+                    col_index = df.columns.get_loc(col)
+                    df.drop(columns=[col], inplace=True)
+                    for new_col in reversed(valid_expanded_cols.columns):
+                        df.insert(col_index, new_col, valid_expanded_cols[new_col])
+                        
+        return df
+
+
+       
+class DataInsertionStep:
+
+    def data_insertion(chemin_fichier, sep, header=False, table_name='', type_file='CSV'):
+
+        if type_file == 'CSV':
+            # Parse the CSV file
+            data = DataSplitInsertionFromFileFunctions.parse_file(
+                chemin_fichier, sep, header)
+        elif type_file == 'EXCEL':
+            data = pd.read_excel(chemin_fichier)
+        elif type_file == 'JSON':
+            # Parse the JSON file
+            data = DataSplitInsertionFromFileFunctions.upload_file_to_dataframe_json(
+                chemin_fichier)
+        elif type_file == 'XML':
+            return -1
+        elif type_file == 'SQL':
+            return -1
+        else:
+            return -1
+
+        db_name = table_name 
+
+        # TODO : 1FN
+        data = DataSplitInsertionFromFileFunctions.verify1FN(data)
+
+        return DBFunctions.insert_dataframe_into_postgresql_table(data, db_name), data, db_name

@@ -23,6 +23,7 @@ router.register(r'projet', ProjetViewSet, basename='projet')
 
 
 
+
 schema_view = get_schema_view(
     openapi.Info(
         title="Data Guardian : API ",
@@ -39,5 +40,5 @@ urlpatterns = [
     url(r'^api/diagnostic/$', DiagnosticViewSet.as_view(), name='diagnostic'),
     url(r'^api/authenticate/$', LoginView.as_view(), name='login'),
     url(r'^api/logout/$', LogoutView.as_view(), name='logout'),
-    url(r'^api/semantic/$', SemanticInferenceView.as_view(), name='semantic')
+    # url(r'^api/semantic/$', SemanticInferenceView.as_view(), name='semantic')
 ]

@@ -177,6 +177,7 @@ class UtilisateurSerializer(serializers.ModelSerializer):
 
         if 'compte' in validated_data :
             compte = validated_data.pop('compte')
+            compte.pop("mot_de_passe")
 
         if 'role' in validated_data :
             role = validated_data.pop('role')
@@ -209,22 +210,52 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+    def get_file_type(ext):
+
+        csv_ext_list = ["xlsx", "xls", "csv", "sql", "txt", "json", "xml"]
+        txt_ext = 'TXT'
+        json_ext = 'JSON'
+        xml_ext = 'XML'
+        sql_ext = 'SQL'
+
+        if ext in csv_ext_list :
+            return BaseDeDonnees.CSV
+        elif ext in txt_ext :
+            return BaseDeDonnees.TEXT
+        elif ext in json_ext :
+            return BaseDeDonnees.JSON
+        elif ext in xml_ext :
+            return BaseDeDonnees.XML
+        elif ext in sql_ext : 
+            return BaseDeDonnees.SQL
+
+    def get_file_format(ext):
+
+        pass
+
+
     def create(self, validated_data):
 
         fichier = validated_data.pop('fichier_bd', None)
-        print("validated_data")
 
         if fichier : 
             validated_data['nom_fichier'] = fichier.name
             validated_data['taille_fichier'] = str(round(fichier.size / (1024 * 1024), 6)) + "MB"
+            time = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    ).replace(":", "").replace(".", "").replace(" ", "").replace("-", "")
+            validated_data['nom_base_de_donnees'] =  fichier.name.split(".")[0].strip() + time
 
-        base_de_donnees = BaseDeDonnees.objects.create( **validated_data)
+            extension = str(fichier.name.split('.')[-1]).upper()
+
+            print(extension)
+
+        base_de_donnees = BaseDeDonnees.objects.create( fichier_bd = fichier, **validated_data)
+
         return base_de_donnees
     
 
     def update(self, instance, validated_data):
         
-        print("validated_data")
         fichier = validated_data.pop('fichier_bd', None)
          
         if fichier:
@@ -299,18 +330,13 @@ class MetaTousContraintesSerializer(serializers.ModelSerializer):
 
 class MetaColonneSerializer(serializers.ModelSerializer):
 
+    meta_anomalie = MetaAnomalieSerializer()
+    contraintes = MetaTousContraintesSerializer(many=True)
+
     class Meta:
         model = MetaColonne
         fields = '__all__'
         
-class ProjetSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = Projet
-        fields = '__all__'
-        
-
-
 class ProjetSerializer(serializers.ModelSerializer):
 
     class Meta:

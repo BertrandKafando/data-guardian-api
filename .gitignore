@@ -4,7 +4,6 @@ staticfiles
 
 prod.py
 
-
 # données des volumes créés
 
 **/pgdata/
@@ -170,4 +169,8 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+#
+media/uploaded_db/**
 
+# migrations
+**/migrations/*
