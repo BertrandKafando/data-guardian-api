@@ -296,7 +296,6 @@ class DataSplitInsertionFromFileFunctions:
     
 
 
-
     # Fonction pour compter le nombre moyen de mots dans une colonne
     def average_word_count(series):
         return series.str.split(' ').str.len().mean()
