@@ -68,7 +68,9 @@ class DBFunctions:
     def insert_dataframe_into_postgresql_table(dataframe, headers, table_name):
         try:
             with connection.cursor() as cursor:
-                columns = columns = ", ".join([f"{DBFunctions.clean_column_name(header)} VARCHAR(255)" for header in headers])
+                dtype_mapping = {col: DBFunctions.map_numpy_type_to_sql(str(dataframe[col].dtype)) for col in dataframe.columns}
+                columns = ', '.join( [f"{DBFunctions.clean_column_name(header)} {dtype_mapping[header]}" for header in dataframe.columns])
+                #columns = columns = ", ".join([f"{DBFunctions.clean_column_name(header)} VARCHAR(255)" for header in headers])
                 cursor.execute(
                     f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});")
 
@@ -88,6 +90,16 @@ class DBFunctions:
             print(f"Error inserting data into the table {table_name}: {e}")
             return -1
         
+
+    def map_numpy_type_to_sql(dtype):
+        # Mapping des types numpy aux types SQL
+        numpy_sql_type_mapping = {
+            'int64': 'INTEGER',
+            'float64': 'FLOAT',
+            'object': 'VARCHAR(255)',
+            # Ajoutez d'autres mappings selon vos besoins
+        }
+        return numpy_sql_type_mapping.get(dtype, 'TEXT')
 
 
     def extract_nested_data(request):
@@ -306,7 +318,7 @@ class DataInsertionStep:
             # Parse the CSV file
             data, headers = DataSplitInsertionFromFileFunctions.parse_file(
                 chemin_fichier, sep, header)
-            print(data)
+            print(data.dtypes)
         elif type_file == 'EXCEL':
             data = pd.read_excel(chemin_fichier)
         elif type_file == 'JSON':
