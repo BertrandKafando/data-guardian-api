@@ -1369,8 +1369,46 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION isColumnIn1NF(tableName VARCHAR, columnName VARCHAR)
+RETURNS VARCHAR AS $$
+DECLARE
+    notIn1NF VARCHAR(100);
+    colType VARCHAR;
+    strValue VARCHAR;
+    queryStr TEXT;
+BEGIN
+    notIn1NF := 'Yes';
 
---fonction  pour verifier la duplication des valeurs dans une colonne
+    -- Récupérer le type de données de la colonne spécifiée
+    SELECT data_type INTO colType
+    FROM information_schema.columns
+    WHERE table_name = tableName AND column_name = columnName;
+
+    -- Vérifier si le type de données est non atomique
+    IF colType IN ('USER-DEFINED', 'ARRAY') THEN
+        notIn1NF := 'No';
+    ELSIF colType = 'character varying' OR colType = 'char' THEN
+        -- Préparer la requête dynamique
+        queryStr := 'SELECT ' || quote_ident(columnName) || ' FROM ' || quote_ident(tableName);
+        FOR strValue IN EXECUTE queryStr LOOP
+            -- Recherche de patterns qui suggèrent des données non atomiques
+            IF strValue ~ '[a-zA-Z0-9]+,\s+([a-zA-Z0-9]+\s+)*' OR strValue ~ '[a-zA-Z0-9]+;\s+([a-zA-Z0-9]+\s+)*' OR strValue ~ '[a-zA-Z0-9]+-\s+([a-zA-Z0-9]+\s+)*' OR strValue ~ '[a-zA-Z0-9]+,\s+([a-zA-Z0-9]+\s+)*' OR strValue ~ '[a-zA-Z0-9]+\s+([a-zA-Z0-9]+\s+)*' THEN
+                notIn1NF := 'No';
+                EXIT;
+            END IF;
+        END LOOP;
+    END IF;
+
+    RETURN notIn1NF;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RETURN 'Column or Table not found';
+    WHEN OTHERS THEN
+        RETURN 'Error: ' || SQLERRM;
+END;
+$$ LANGUAGE plpgsql;
+
+
 CREATE OR REPLACE FUNCTION VerifierDuplication(tableName VARCHAR, columnName VARCHAR)
 RETURNS TABLE(duplicatedWith VARCHAR[]) AS $$
 DECLARE
@@ -1396,7 +1434,37 @@ BEGIN
     RETURN QUERY SELECT duplicatedColumns;
 END;
 $$ LANGUAGE plpgsql;
---
+
+
+CREATE OR REPLACE FUNCTION compute_mean_numeric(Nom_COL VARCHAR, NOMTAB VARCHAR) RETURNS NUMERIC AS
+$$
+DECLARE
+  Query    VARCHAR(2000);
+  avg_num  NUMERIC(10,2);
+BEGIN 
+  Query := 'SELECT AVG(' || Nom_COL || '::NUMERIC) FROM ' || NOMTAB;
+  EXECUTE Query INTO avg_num;
+  RETURN avg_num; 
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION compute_std_numeric (Nom_COL VARCHAR, NOMTAB VARCHAR) RETURNS NUMERIC AS
+$$
+DECLARE
+  Query VARCHAR(2000);
+  std NUMERIC(10,2);
+BEGIN 
+  Query := 'SELECT STDDEV(' || Nom_COL || '::NUMERIC) FROM ' || NOMTAB;
+  EXECUTE Query INTO std;
+  RETURN std; 
+EXCEPTION
+  WHEN OTHERS THEN
+    RETURN -1;
+END;
+$$ LANGUAGE plpgsql;
+
+
 CREATE OR REPLACE FUNCTION count_outliers(NOMTAB VARCHAR, Nom_COL VARCHAR, z_threshold NUMERIC) RETURNS INTEGER AS
 $$
 DECLARE
@@ -1426,31 +1494,25 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-
-CREATE OR REPLACE FUNCTION compute_mean_numeric (Nom_COL VARCHAR, NOMTAB VARCHAR) RETURNS NUMERIC AS
-$$
+CREATE OR REPLACE FUNCTION COUNT_DOUBLONS(NomTab VARCHAR, AttributsCle TEXT DEFAULT '')
+RETURNS INT AS $$
 DECLARE
-  Query    VARCHAR(2000);
-  avg_num  NUMERIC(10,2);
-BEGIN 
-  Query := 'SELECT AVG(' || Nom_COL || '::NUMERIC) FROM ' || NOMTAB;
-  EXECUTE Query INTO avg_num;
-  RETURN avg_num; 
+    ConcatAttributsCle VARCHAR(1000);
+    DoublonsCount INT;
+    Query VARCHAR(1000);
+BEGIN
+    ConcatAttributsCle := REPLACE(AttributsCle, ',', ' || ');
+ 
+    -- Count the number of duplicates
+    Query := 'SELECT COUNT(*) FROM (
+                  SELECT ' || ConcatAttributsCle || ', COUNT(*) as count
+                  FROM ' || NomTab || '
+                  GROUP BY ' || ConcatAttributsCle || '
+                  HAVING COUNT(*) > 1
+              ) as duplicates';
+    EXECUTE Query INTO DoublonsCount;
+ 
+    RETURN DoublonsCount;
 END;
 $$ LANGUAGE plpgsql;
 
-
-CREATE OR REPLACE FUNCTION compute_std_numeric (Nom_COL VARCHAR, NOMTAB VARCHAR) RETURNS NUMERIC AS
-$$
-DECLARE
-  Query VARCHAR(2000);
-  std NUMERIC(10,2);
-BEGIN 
-  Query := 'SELECT STDDEV(' || Nom_COL || '::NUMERIC) FROM ' || NOMTAB;
-  EXECUTE Query INTO std;
-  RETURN std; 
-EXCEPTION
-  WHEN OTHERS THEN
-    RETURN -1;
-END;
-$$ LANGUAGE plpgsql;

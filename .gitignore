@@ -170,9 +170,7 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 #
-media/uploaded_db/
+**/uploaded_db/**
 
 # migrations
-DataGuardian/migrations/*
-
-**/migrations/*
+**/migrations/**
