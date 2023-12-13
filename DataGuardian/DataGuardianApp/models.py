@@ -264,4 +264,3 @@ class MetaColonne(models.Model):
         return self.nom_colonne
     
     
-

@@ -30,8 +30,9 @@ def run_sql_scripts(sender, **kwargs):
         test_data_script_path = os.path.join(BASE_DIR, "DataGuardian/DataGuardianApp/db_configs/test_data.sql")
 
     if OS_PLATFORM =="WINDOWS" : 
-        functions_script_path = os.path.join(BASE_DIR, "DataGuardian\\DataGuardianApp\\db_configs\\functions.sql")
-        test_data_script_path = os.path.join(BASE_DIR, "DataGuardian\\DataGuardianApp\\db_configs\\test_data.sql")
+
+        functions_script_path = os.path.join(BASE_DIR, "DataGuardian\DataGuardianApp\db_configs\\functions.sql")
+        test_data_script_path = os.path.join(BASE_DIR, "DataGuardian\DataGuardianApp\db_configs\\test_data.sql")
 
     try:
         subprocess.run(['psql', '-U', env("POSTGRES_USER"), '-d', env("POSTGRES_DB"), '-a', '-f', functions_script_path])

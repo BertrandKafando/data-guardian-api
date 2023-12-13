@@ -343,20 +343,39 @@ class DiagnosticViewSet(APIView):
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN" :
 
-                    # TODO : check if the column is not a comment then check for the 1st FN
 
-                    # we have the code
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, base_de_donnees.nom_base_de_donnees)
 
-                    pass
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, base_de_donnees.nom_base_de_donnees)
+
+                    meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, base_de_donnees.nom_base_de_donnees)
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN_DUPLICATIONS" :
-                    pass
+
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, base_de_donnees.nom_base_de_donnees)
+
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, base_de_donnees.nom_base_de_donnees)
+
+                    meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, base_de_donnees.nom_base_de_donnees)
+
 
                 if parametre_diagnostic == "ALL" :
-                    # répétition de colonne : Ok
-                    # dépendance fonctionnelle : TODO
-                    # autres
-                    pass
+
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, base_de_donnees.nom_base_de_donnees)
+
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, base_de_donnees.nom_base_de_donnees)
+
+                    meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, base_de_donnees.nom_base_de_donnees)
+
+                    # Outliers : we have the function but it must be uptdated 
+                    # Dépendance fonctionnelle : we don't have it yet
+                    # répétition de colonne : we have the function
+                    # Nombre Majuscules : we have the function
+                    # Nombre Minuscules : we have the function
+                    # Nombre Init Cap : we have the function
+                    # Col Min : we have the function
+                    # Col Max : we have the function
+
 
             else :
                 pass

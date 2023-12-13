@@ -210,6 +210,30 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+    def get_file_type(ext):
+
+        csv_ext_list = ["xlsx", "xls", "csv", "sql", "txt", "json", "xml"]
+        txt_ext = 'TXT'
+        json_ext = 'JSON'
+        xml_ext = 'XML'
+        sql_ext = 'SQL'
+
+        if ext in csv_ext_list :
+            return BaseDeDonnees.CSV
+        elif ext in txt_ext :
+            return BaseDeDonnees.TEXT
+        elif ext in json_ext :
+            return BaseDeDonnees.JSON
+        elif ext in xml_ext :
+            return BaseDeDonnees.XML
+        elif ext in sql_ext : 
+            return BaseDeDonnees.SQL
+
+    def get_file_format(ext):
+
+        pass
+
+
     def create(self, validated_data):
 
         fichier = validated_data.pop('fichier_bd', None)
@@ -219,7 +243,11 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
             validated_data['taille_fichier'] = str(round(fichier.size / (1024 * 1024), 6)) + "MB"
             time = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     ).replace(":", "").replace(".", "").replace(" ", "").replace("-", "")
-            validated_data['nom_base_de_donnees'] =  fichier.name.split(".")[0].strip() + time          
+            validated_data['nom_base_de_donnees'] =  fichier.name.split(".")[0].strip() + time
+
+            extension = str(fichier.name.split('.')[-1]).upper()
+
+            print(extension)
 
         base_de_donnees = BaseDeDonnees.objects.create( fichier_bd = fichier, **validated_data)
 

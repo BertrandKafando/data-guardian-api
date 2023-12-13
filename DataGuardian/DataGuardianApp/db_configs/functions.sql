@@ -1423,3 +1423,76 @@ BEGIN
     RETURN v_count;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION isColumnIn1NF(tableName VARCHAR, columnName VARCHAR)
+RETURNS VARCHAR AS $$
+DECLARE
+    notIn1NF VARCHAR(100);
+    colType VARCHAR;
+    strValue VARCHAR;
+    queryStr TEXT;
+BEGIN
+    notIn1NF := 'Yes';
+
+    -- Récupérer le type de données de la colonne spécifiée
+    SELECT data_type INTO colType
+    FROM information_schema.columns
+    WHERE table_name = tableName AND column_name = columnName;
+
+    -- Vérifier si le type de données est non atomique
+    IF colType IN ('USER-DEFINED', 'ARRAY') THEN
+        notIn1NF := 'No';
+    ELSIF colType = 'character varying' OR colType = 'char' THEN
+        -- Préparer la requête dynamique
+        queryStr := 'SELECT ' || quote_ident(columnName) || ' FROM ' || quote_ident(tableName);
+        FOR strValue IN EXECUTE queryStr LOOP
+            -- Recherche de patterns qui suggèrent des données non atomiques
+            IF strValue ~ '[a-zA-Z0-9]+,\s+([a-zA-Z0-9]+\s+)*' OR strValue ~ '[a-zA-Z0-9]+;\s+([a-zA-Z0-9]+\s+)*' OR strValue ~ '[a-zA-Z0-9]+-\s+([a-zA-Z0-9]+\s+)*' OR strValue ~ '[a-zA-Z0-9]+,\s+([a-zA-Z0-9]+\s+)*' OR strValue ~ '[a-zA-Z0-9]+\s+([a-zA-Z0-9]+\s+)*' THEN
+                notIn1NF := 'No';
+                EXIT;
+            END IF;
+        END LOOP;
+    END IF;
+
+    RETURN notIn1NF;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RETURN 'Column or Table not found';
+    WHEN OTHERS THEN
+        RETURN 'Error: ' || SQLERRM;
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION estColonneDupliquee(tableName TEXT, columnName TEXT)
+RETURNS BOOLEAN AS $$
+DECLARE
+    colonneCible TEXT;
+    queryStr TEXT;
+    resultCount INTEGER;
+    columnType TEXT;
+BEGIN
+    -- Obtenir le type de la colonne cible
+    SELECT data_type INTO columnType FROM information_schema.columns 
+    WHERE table_name = tableName AND column_name = columnName;
+
+    FOR colonneCible IN
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = tableName AND column_name != columnName AND data_type = columnType
+    LOOP
+        -- Comparer seulement les colonnes de même type
+        queryStr := FORMAT('SELECT COUNT(*) FROM ((SELECT %I FROM %I EXCEPT SELECT %I FROM %I) UNION ALL (SELECT %I FROM %I EXCEPT SELECT %I FROM %I)) AS diff',
+                            columnName, tableName, colonneCible, tableName, colonneCible, tableName, columnName, tableName);
+
+        EXECUTE queryStr INTO resultCount;
+
+        -- Si aucune différence n'est trouvée, les colonnes sont considérées comme dupliquées
+        IF resultCount = 0 THEN
+            RETURN TRUE;
+        END IF;
+    END LOOP;
+
+    RETURN FALSE;
+END;
+$$ LANGUAGE plpgsql;
+

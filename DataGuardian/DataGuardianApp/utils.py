@@ -169,6 +169,32 @@ class DBFunctions:
 
         return new_columns_instance
 
+
+    def check_1FN(columns, nom_bd) : 
+
+        new_columns_instance = list()
+
+        for col_instance in columns :
+
+            result_1FN_checking = DBFunctions.executer_fonction_postgresql('isColumnIn1NF', str(nom_bd).lower(), str(col_instance.nom_colonne).lower())
+
+            anomalie = MetaAnomalie()
+
+            anomalie.nom_anomalie = "Premiere Forme normale"
+
+            if result_1FN_checking[0] == 'Yes' :
+                anomalie.valeur_trouvee = 1 #True
+
+            else :
+                anomalie.valeur_trouvee = 0 #False
+
+            anomalie.save()
+
+            col_instance.meta_anomalie = anomalie
+            col_instance.save()
+            new_columns_instance.append(col_instance)
+
+        return new_columns_instance
      
 class DataSplitInsertionFromFileFunctions:
     
@@ -220,8 +246,6 @@ class DataSplitInsertionFromFileFunctions:
             print(f"Error converting file to dataframe: {e}")
             return -1
        
-       
-        
     
     def verify1FN(dataframe):
         # Check if there are any duplicate columns
@@ -232,7 +256,6 @@ class DataSplitInsertionFromFileFunctions:
         # Our checks 
         dataframe = DataSplitInsertionFromFileFunctions.process_data(dataframe)
         return dataframe
-    
     
 
     # Fonction pour nettoyer les noms de colonnes
