@@ -65,13 +65,12 @@ class DBFunctions:
                 print(f"Erreur lors de l'exécution de la fonction {nom_fonction}: {e}")
                 return -1
 
-    def insert_dataframe_into_postgresql_table(dataframe, table_name):
+    def insert_dataframe_into_postgresql_table(dataframe, headers, table_name):
         try:
             with connection.cursor() as cursor:
-                dataframe_columns = list(dataframe.columns)
-                columns = ", ".join(
-                    f"col{i+1} VARCHAR" for i in range(len(dataframe.columns)))
-                
+                dtype_mapping = {col: DBFunctions.map_numpy_type_to_sql(str(dataframe[col].dtype)) for col in dataframe.columns}
+                columns = ', '.join( [f"{DBFunctions.clean_column_name(header)} {dtype_mapping[header]}" for header in dataframe.columns])
+                #columns = columns = ", ".join([f"{DBFunctions.clean_column_name(header)} VARCHAR(255)" for header in headers])
                 cursor.execute(
                     f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});")
 
@@ -91,6 +90,16 @@ class DBFunctions:
             print(f"Error inserting data into the table {table_name}: {e}")
             return -1
         
+
+    def map_numpy_type_to_sql(dtype):
+        # Mapping des types numpy aux types SQL
+        numpy_sql_type_mapping = {
+            'int64': 'INTEGER',
+            'float64': 'FLOAT',
+            'object': 'VARCHAR(255)',
+            # Ajoutez d'autres mappings selon vos besoins
+        }
+        return numpy_sql_type_mapping.get(dtype, 'TEXT')
 
 
     def extract_nested_data(request):
@@ -122,7 +131,7 @@ class DBFunctions:
 
         for i in range(len(list(columns))) :
 
-            col = "col"+str(i+1)
+            col = list(columns)[i]
 
             meta_colonne = MetaColonne()
             meta_colonne.nom_colonne = col
@@ -168,6 +177,10 @@ class DBFunctions:
             new_columns_instance.append(col_instance)
 
         return new_columns_instance
+        # Fonction pour nettoyer les noms de colonnes
+
+    def clean_column_name(name):
+        return re.sub(r'[^0-9a-zA-Z_]', '_', name)
 
      
 class DataSplitInsertionFromFileFunctions:
@@ -183,11 +196,12 @@ class DataSplitInsertionFromFileFunctions:
                 incomplete_line = ''
                 for idx, line in enumerate(lines):
                     line = line.strip()
-                    line = line[1:-2]
                     row = line.split(sep)
                     if idx != 0 and len(row) < len(data[0]):
                         # Add the incomplete part to the last read line
-                        data[-1][-1] += f' {line}'
+                        temp1 = data[-1][-1]
+                        temp2 = f' {line}'
+                        data[-1][-1]  = temp1[:-1] + temp2[2:-1]
                     else:
                         data.append(row)
 
@@ -201,14 +215,37 @@ class DataSplitInsertionFromFileFunctions:
             # Transform into a DataFrame-like structure
             res = {header: [] for header in headers}
             for i, header in enumerate(headers):
-                for row in data:
-                    res[header].append(row[i])
+                column_data = [row[i] for row in data]
+                
+                # Attempt to infer data types
+                column_series = pd.Series(column_data)
 
-            return pd.DataFrame(res)
+                # Try converting to numeric
+                try:
+                    numeric_column = pd.to_numeric(column_series)
+                    if numeric_column.notnull().all():
+                        res[header] = numeric_column
+                        continue
+                except:
+                    pass
+
+                # Try converting to datetime
+                try:
+                    date_column = pd.to_datetime(column_series)
+                    if date_column.notnull().all():
+                        res[header] = date_column
+                        continue
+                except:
+                    pass
+
+                # If unable to convert to numeric or datetime, keep as object
+                res[header] = column_series
+
+            return pd.DataFrame(res), headers
 
         except Exception as e:
             print(f"Error parsing file: {e}")
-            return -1
+            return None
 
         
     
@@ -235,9 +272,7 @@ class DataSplitInsertionFromFileFunctions:
     
     
 
-    # Fonction pour nettoyer les noms de colonnes
-    def clean_column_name(name):
-        return re.sub(r'[^0-9a-zA-Z_]', '_', name)
+
 
     # Fonction pour compter le nombre moyen de mots dans une colonne
     def average_word_count(series):
@@ -281,8 +316,9 @@ class DataInsertionStep:
 
         if type_file == 'CSV':
             # Parse the CSV file
-            data = DataSplitInsertionFromFileFunctions.parse_file(
+            data, headers = DataSplitInsertionFromFileFunctions.parse_file(
                 chemin_fichier, sep, header)
+            print(data.dtypes)
         elif type_file == 'EXCEL':
             data = pd.read_excel(chemin_fichier)
         elif type_file == 'JSON':
@@ -299,6 +335,6 @@ class DataInsertionStep:
         db_name = table_name 
 
         # TODO : 1FN
-        data = DataSplitInsertionFromFileFunctions.verify1FN(data)
+       # data = DataSplitInsertionFromFileFunctions.verify1FN(data)
 
-        return DBFunctions.insert_dataframe_into_postgresql_table(data, db_name), data, db_name
+        return DBFunctions.insert_dataframe_into_postgresql_table(data, headers, db_name), data, db_name

@@ -173,6 +173,6 @@ cython_debug/
 media/uploaded_db/
 
 # migrations
-DataGuardian/migrations/
+DataGuardian/migrations/*
 
 **/migrations/*
