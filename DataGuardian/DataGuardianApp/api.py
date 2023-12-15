@@ -175,11 +175,15 @@ class BaseDeDonneesViewSet(ModelViewSet):
     def get_queryset(self):
 
         base_de_donnees = self.request.query_params.get('base_de_donnees')
+        project_id = int(self.request.query_params.get('project_id') ) # Ajout du paramètre project_id
         queryset = BaseDeDonnees.objects.all()
 
         if base_de_donnees:
             
-            queryset = queryset.filter(nom_base_de_donnees__icontains=base_de_donnees)        
+            queryset = queryset.filter(nom_base_de_donnees__icontains=base_de_donnees)   
+            
+        if project_id:  # Filtrer par project_id s'il est présent
+            queryset = queryset.filter(projet_id=project_id)     
 
         return queryset
 
@@ -201,10 +205,13 @@ class BaseDeDonneesViewSet(ModelViewSet):
     def create(self, request, *args, **kwargs):
             
             fichier_bd = request.data.get("fichier_bd", None)
+            project_id = request.data.get("projet", None)  # Récupérer l'ID du projet
             base_de_donnees_serializer=BaseDeDonneesSerializer(data=request.data)
             
             if not base_de_donnees_serializer.is_valid():
                 return Response({'detail': 'Données invalides'}, status = status.HTTP_400_BAD_REQUEST)
+            #TODO
+            # Vérifier si l'ID du projet est présent dans la requête
             
             return Response(base_de_donnees_serializer.data, status=status.HTTP_201_CREATED)
     
