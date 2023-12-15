@@ -217,7 +217,7 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
     }
 
     def get_file_type(ext):
-        return BaseDeDonneesSerializer.EXT_MAPPING.get(ext.upper(), None)
+        return BaseDeDonneesSerializer.EXT_MAPPING.get(ext.lower(), None)
 
 
     def get_file_format(fichier_type):
@@ -243,14 +243,12 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
                     ).replace(":", "").replace(".", "").replace(" ", "").replace("-", "")
             
             validated_data['nom_base_de_donnees'] =  fichier.name.split(".")[0].strip() + time
-            extension = str(fichier.name.split('.')[-1]).upper()
-            type_fichier = BaseDeDonneesSerializer.get_file_type(extension)
-            format_fichier = BaseDeDonneesSerializer.get_file_format(extension)
+            extension = str(fichier.name.split('.')[-1])
+            validated_data['type_fichier'] = BaseDeDonneesSerializer.get_file_type(extension)
+            validated_data['format_fichier'] = BaseDeDonneesSerializer.get_file_format(extension)
 
         base_de_donnees = BaseDeDonnees.objects.create( 
-            type_fichier = type_fichier,
             fichier_bd = fichier, 
-            format_fichier = format_fichier,
             **validated_data
         )
 

@@ -211,6 +211,8 @@ class DBFunctions:
 
             result_outliers = DBFunctions.executer_fonction_postgresql('count_outliers', nom_bd, col_instance.nom_colonne, 1)
 
+            print(result_outliers)
+
             if type(result_outliers) != int :
 
                 if result_outliers[0] > 0 :

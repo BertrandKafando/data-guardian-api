@@ -305,6 +305,9 @@ class DiagnosticViewSet(APIView):
             critere_instance = Critere.objects.get_or_create(
                 parametre_diagnostic=parametre_diagnostic
             )
+
+            if isinstance(critere_instance, tuple):
+                critere_instance = critere_instance[0]
              
             diagnostic = Diagnostic.objects.create(
                 base_de_donnees=base_de_donnees,
