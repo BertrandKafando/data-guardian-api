@@ -233,8 +233,27 @@ class DiagnosticViewSet(APIView):
     serializer_class = DiagnosticSerializer 
 
 
-    def get(self, request):
+    def exec_val_manq_logic():
+        pass
 
+
+    def exec_val_manq_constraints_logic():
+        pass
+
+
+    def exec_val_manq_constraints_fn_logic():
+        pass
+
+
+    def exec_val_manq_constraints_fn_duplications_logic():
+        pass
+
+
+    def exec_all_params_logic():
+        pass
+
+
+    def get(self, request):
 
         bd_id = int(self.request.query_params.get('bd_id'))
         if bd_id : 
@@ -283,7 +302,7 @@ class DiagnosticViewSet(APIView):
                 # TODO : récuperer la base de données grace à son nom et l'utilisateur qui l'avait uploadé : query on Diagnostic -> base_de_donnees & utilisateur
                 pass
 
-            critere_instance = Critere.objects.create(
+            critere_instance = Critere.objects.get_or_create(
                 parametre_diagnostic=parametre_diagnostic
             )
              
@@ -304,6 +323,7 @@ class DiagnosticViewSet(APIView):
 
             if table_creation_result == 0 :
 
+                nom_bd = base_de_donnees.nom_base_de_donnees
                 meta_table = MetaTable()
                 meta_table.base_de_donnees = base_de_donnees
                 meta_table.nom_table = base_de_donnees.nom_base_de_donnees
@@ -325,71 +345,57 @@ class DiagnosticViewSet(APIView):
 
                 if parametre_diagnostic == "VAL_MANQ" :
 
-                    for i in range(len(list(df.columns))):
-                        col = df.columns[i]   # "col"+str(i+1)
-                        result_nb_nulls = DBFunctions.executer_fonction_postgresql(
-                            'NombreDeNULLs', db_name, col)[0]
-
                     DBFunctions.check_nulls(df.columns, meta_table, db_name)
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS" :
 
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(
-                        df.columns, meta_table, db_name)
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd)
 
-                    DBFunctions.check_constraints(
-                        meta_cols_instance_nulls, db_name)
-                    DBFunctions.check_nulls(df.columns, meta_table, base_de_donnees.nom_base_de_donnees)
-
-                if parametre_diagnostic == "VAL_MANQ_CONTRAINTS" :
-
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, base_de_donnees.nom_base_de_donnees)
-
-                    DBFunctions.check_constraints(meta_cols_instance_nulls, base_de_donnees.nom_base_de_donnees)
+                    DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
 
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN" :
 
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd)
 
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, base_de_donnees.nom_base_de_donnees)
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
 
-                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, base_de_donnees.nom_base_de_donnees)
+                    meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
-                    meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, base_de_donnees.nom_base_de_donnees)
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN_DUPLICATIONS" :
 
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, base_de_donnees.nom_base_de_donnees)
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd)
 
-                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, base_de_donnees.nom_base_de_donnees)
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
 
-                    meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, base_de_donnees.nom_base_de_donnees)
+                    meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
 
                 if parametre_diagnostic == "ALL" :
 
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, base_de_donnees.nom_base_de_donnees)
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd)
 
-                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, base_de_donnees.nom_base_de_donnees)
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
 
-                    meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, base_de_donnees.nom_base_de_donnees)
+                    meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
-                    # Outliers : we have the function but it must be uptdated 
-                    # Dépendance fonctionnelle : we don't have it yet
-                    # répétition de colonne : we have the function
-                    # Nombre Majuscules : we have the function
-                    # Nombre Minuscules : we have the function
-                    # Nombre Init Cap : we have the function
-                    # Col Min : we have the function
-                    # Col Max : we have the function
+                    meta_cols_outliers = DBFunctions.check_outliers(meta_cols_instances_fn, nom_bd)
 
+                    meta_cols_repetitions = DBFunctions.check_cols_repetitions(meta_cols_outliers, nom_bd)
+
+                    meta_cols_others = DBFunctions.get_other_stats(meta_cols_repetitions, nom_bd)
+
+                    #DBFunctions.check_funtional_dependancies(meta_cols_others, nom_bd)
+
+
+                diagnostic.status = Diagnostic.TERMINE
+                diagnostic_data = DiagnosticSerializer(diagnostic).data
 
             else :
-                pass
 
-            diagnostic.status = Diagnostic.TERMINE
-            diagnostic_data = DiagnosticSerializer(diagnostic).data
-            
+                diagnostic.status = Diagnostic.ECHEC
+                diagnostic_data = DiagnosticSerializer(diagnostic).data
 
         return Response({
             "diagnostic" : diagnostic_data
@@ -520,8 +526,6 @@ class LoginView(APIView):
         
         login(request, user)
 
-
-        #TOKEN
         token, _ = Token.objects.get_or_create(user = user)
 
         #token_expire_handler will check, if the token is expired it will generate new one
@@ -592,6 +596,7 @@ class ProjetViewSet(ModelViewSet):
             queryset = Projet.objects.all()
 
         return queryset
+    
     
 
 # class SemanticInferenceView(APIView):

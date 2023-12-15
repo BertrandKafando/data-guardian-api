@@ -126,6 +126,7 @@ class DBFunctions:
 
         return nested_data
 
+
     def check_nulls(columns, meta_table, nom_bd) : 
 
         meta_col_instances = list()
@@ -175,16 +176,11 @@ class DBFunctions:
             new_columns_instance.append(col_instance)
 
         return new_columns_instance
-        # Fonction pour nettoyer les noms de colonnes
-
-    def clean_column_name(name):
-        return re.sub(r'[^0-9a-zA-Z_]', '_', name)
 
 
     def check_1FN(columns, nom_bd) : 
 
         new_columns_instance = list()
-        anomalies = []
         for col_instance in columns :
 
             result_1FN_checking = DBFunctions.executer_fonction_postgresql('isColumnIn1NF', str(nom_bd).lower(), str(col_instance.nom_colonne).lower())
@@ -200,12 +196,94 @@ class DBFunctions:
                 anomalie.valeur_trouvee = 0 #False
 
             anomalie.save()
-            anomalies.append(anomalie)
             col_instance.meta_anomalie.add(anomalie)
             col_instance.save()
             new_columns_instance.append(col_instance)
 
         return new_columns_instance
+    
+
+    def check_outliers(columns, nom_bd) : 
+
+        new_columns_instance = list()
+
+        for col_instance in columns :
+
+            result_outliers = DBFunctions.executer_fonction_postgresql('count_outliers', nom_bd, col_instance.nom_colonne, 1)
+
+            if type(result_outliers) != int :
+
+                if result_outliers[0] > 0 :
+                    col_instance.nombre_outliers = result_outliers[0]
+
+            col_instance.save()
+            new_columns_instance.append(col_instance)
+
+
+    def check_cols_repetitions(columns, nom_bd) : 
+
+        new_columns_instance = list()
+
+        for col_instance in columns :
+
+            result_cols_repetitions = DBFunctions.executer_fonction_postgresql('VerifierDuplication',nom_bd, col_instance.nom_colonne)
+
+            if result_cols_repetitions :
+                    
+                anomalie = MetaAnomalie()
+                anomalie.nom_anomalie = "Repetition de colonne"
+                anomalie.valeur_trouvee = result_cols_repetitions[0]
+                anomalie.save()
+
+            col_instance.meta_anomalie.add(anomalie)
+            col_instance.save()
+            new_columns_instance.append(col_instance)
+
+
+    def get_other_stats(columns, nom_bd) : 
+
+        new_columns_instance = list()
+
+        for col_instance in columns :
+
+            result_uppercases = DBFunctions.executer_fonction_postgresql('CountUppercaseNames',nom_bd, col_instance.nom_colonne)
+            result_lowercases = DBFunctions.executer_fonction_postgresql('CountLowercaseNames',nom_bd, col_instance.nom_colonne)
+            result_init_caps = DBFunctions.executer_fonction_postgresql('CountInitcapNames',nom_bd, col_instance.nom_colonne)
+            result_min_val = DBFunctions.executer_fonction_postgresql('get_min_value',nom_bd, col_instance.nom_colonne)
+            result_max_val = DBFunctions.executer_fonction_postgresql('get_max_value',nom_bd, col_instance.nom_colonne)
+            result_type_col = DBFunctions.executer_fonction_postgresql('TypeDesColonne',nom_bd, col_instance.nom_colonne)
+
+
+            if type(result_uppercases) != int :
+                if result_uppercases[0] > 0 :
+                    col_instance.nombre_majuscules = result_uppercases[0]
+
+            if type(result_lowercases) != int :
+                if result_lowercases[0] > 0 :
+                    col_instance.nombre_miniscules = result_lowercases[0]
+
+            if type(result_init_caps) != int :
+                if result_init_caps[0] > 0 :
+                    col_instance.nombre_init_cap = result_init_caps[0]
+
+            if type(result_min_val) != int :
+                if result_min_val[0] > 0 :
+                    col_instance.col_min = result_min_val[0]
+
+            if type(result_max_val) != int :
+                if result_max_val[0] > 0 :
+                    col_instance.col_max = result_max_val[0]
+
+            if type(result_type_col) != int :
+                if result_type_col[0] > 0 :
+                    col_instance.type_donnees = result_type_col[0]
+
+            col_instance.save()
+            new_columns_instance.append(col_instance)
+    
+    # Fonction pour nettoyer les noms de colonnes
+    def clean_column_name(name):
+        return re.sub(r'[^0-9a-zA-Z_]', '_', name)
      
 class DataSplitInsertionFromFileFunctions:
     

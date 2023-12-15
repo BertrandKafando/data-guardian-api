@@ -20,14 +20,12 @@ now = timezone.now()
 BASE_DIR = settings.BASE_DIR
 
 
-#ok
 class RoleSerializer(serializers.ModelSerializer):
     
     class Meta:
         model=Role
         fields=["nom_role","creation", "modification"]
 
-#ok
 class CompteSerializer(serializers.ModelSerializer):
 
     mot_de_passe=serializers.CharField(
@@ -89,7 +87,6 @@ class CompteSerializer(serializers.ModelSerializer):
         return super(CompteSerializer, self).update(instance,validated_data)
     
 
-#ok
 class UtilisateurSerializer(serializers.ModelSerializer):
     
     compte = CompteSerializer(required=False)
@@ -195,7 +192,6 @@ class UtilisateurSerializer(serializers.ModelSerializer):
         return super(UtilisateurSerializer,self).update(instance, validated_data)
 
 
-#ok
 class CritereSerializer(serializers.ModelSerializer):
     
     class Meta:
@@ -210,28 +206,30 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+    EXT_MAPPING = {
+        "xlsx": BaseDeDonnees.CSV,
+        "xls": BaseDeDonnees.CSV,
+        "csv": BaseDeDonnees.CSV,
+        "sql": BaseDeDonnees.SQL,
+        "txt": BaseDeDonnees.TEXT,
+        "json": BaseDeDonnees.JSON,
+        "xml": BaseDeDonnees.XML
+    }
+
     def get_file_type(ext):
+        return BaseDeDonneesSerializer.EXT_MAPPING.get(ext.upper(), None)
 
-        csv_ext_list = ["xlsx", "xls", "csv", "sql", "txt", "json", "xml"]
-        txt_ext = 'TXT'
-        json_ext = 'JSON'
-        xml_ext = 'XML'
-        sql_ext = 'SQL'
 
-        if ext in csv_ext_list :
-            return BaseDeDonnees.CSV
-        elif ext in txt_ext :
-            return BaseDeDonnees.TEXT
-        elif ext in json_ext :
-            return BaseDeDonnees.JSON
-        elif ext in xml_ext :
-            return BaseDeDonnees.XML
-        elif ext in sql_ext : 
-            return BaseDeDonnees.SQL
+    def get_file_format(fichier_type):
 
-    def get_file_format(ext):
-
-        pass
+        if fichier_type.upper() in ['CSV', 'SQL']:
+            return 'Tabulaire'
+        elif fichier_type.upper() in ['JSON', 'XML']:
+            return 'Orienté objet'
+        elif fichier_type.upper() == 'TEXT':
+            return 'En colonne'
+        else:
+            return 'Format inconnu'
 
 
     def create(self, validated_data):
@@ -243,13 +241,18 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
             validated_data['taille_fichier'] = str(round(fichier.size / (1024 * 1024), 6)) + "MB"
             time = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     ).replace(":", "").replace(".", "").replace(" ", "").replace("-", "")
+            
             validated_data['nom_base_de_donnees'] =  fichier.name.split(".")[0].strip() + time
-
             extension = str(fichier.name.split('.')[-1]).upper()
+            type_fichier = BaseDeDonneesSerializer.get_file_type(extension)
+            format_fichier = BaseDeDonneesSerializer.get_file_format(extension)
 
-            print(extension)
-
-        base_de_donnees = BaseDeDonnees.objects.create( fichier_bd = fichier, **validated_data)
+        base_de_donnees = BaseDeDonnees.objects.create( 
+            type_fichier = type_fichier,
+            fichier_bd = fichier, 
+            format_fichier = format_fichier,
+            **validated_data
+        )
 
         return base_de_donnees
     
