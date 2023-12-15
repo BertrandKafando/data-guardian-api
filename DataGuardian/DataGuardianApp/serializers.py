@@ -330,7 +330,7 @@ class MetaTousContraintesSerializer(serializers.ModelSerializer):
 
 class MetaColonneSerializer(serializers.ModelSerializer):
 
-    meta_anomalie = MetaAnomalieSerializer()
+    meta_anomalie = MetaAnomalieSerializer(many=True)
     contraintes = MetaTousContraintesSerializer(many=True)
 
     class Meta:

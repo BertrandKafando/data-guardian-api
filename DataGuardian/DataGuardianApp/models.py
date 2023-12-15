@@ -257,7 +257,7 @@ class MetaColonne(models.Model):
     dependances = models.CharField(max_length=200, null=True, blank=True)
     meta_table = models.ForeignKey(MetaTable,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
     meta_special_car = models.ForeignKey(MetaSpecialCar,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
-    meta_anomalie = models.ForeignKey(MetaAnomalie,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
+    meta_anomalie = models.ManyToManyField(MetaAnomalie,related_name="meta_colonne", symmetrical=False, blank=True)
     contraintes = models.ManyToManyField(MetaTousContraintes, related_name='meta_colonne', symmetrical=False, blank=True)
 
     def __str__(self):

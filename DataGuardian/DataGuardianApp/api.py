@@ -404,7 +404,14 @@ class MetaTableViewSet(ModelViewSet):
 
     def get_queryset(self):
 
-        queryset = MetaTable.objects.all()
+        bd_id = self.request.query_params.get('bd_id')
+
+        if bd_id:
+            queryset = MetaTable.objects.filter(base_de_donnees=bd_id)
+        else:
+           queryset = MetaTable.objects.all()
+        
+    
         return queryset
     
 
@@ -466,9 +473,16 @@ class MetaColonneViewSet(ModelViewSet):
 
 
     def get_queryset(self):
+        meta_table_id = self.request.query_params.get('meta_table_id')
 
-        queryset = MetaColonne.objects.all()
+        if meta_table_id:
+            queryset = MetaColonne.objects.filter(meta_table=meta_table_id)
+        else:
+            queryset = MetaColonne.objects.all()
+
         return queryset
+
+      
     
 
 class LoginView(APIView):
