@@ -111,6 +111,8 @@ class BaseDeDonnees(models.Model):
     JSON = 'JSON'
     CSV ='CSV'
     XML = 'XML'
+    XLS = 'XLS'
+    XLSX = 'XLSX'
 
     CHOIX_FICHIER = [
         (SQL, 'SQL'),
@@ -118,6 +120,8 @@ class BaseDeDonnees(models.Model):
         (JSON, 'JSON'),
         (CSV, 'CSV'),
         (XML, 'XML'),
+        (XLS, 'XLS'),
+        (XLSX, 'XLSX')
     ]
 
 

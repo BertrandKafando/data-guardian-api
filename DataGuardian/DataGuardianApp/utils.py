@@ -70,6 +70,7 @@ class DBFunctions:
             with connection.cursor() as cursor:
                 dtype_mapping = {col: DBFunctions.map_numpy_type_to_sql(str(dataframe[col].dtype)) for col in dataframe.columns}
                 columns = ', '.join( [f"{DBFunctions.clean_column_name(header)} {dtype_mapping[header]}" for header in dataframe.columns])
+                print(columns)
                 #columns = columns = ", ".join([f"{DBFunctions.clean_column_name(header)} VARCHAR(255)" for header in headers])
                 cursor.execute(
                     f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});")
@@ -214,10 +215,12 @@ class DataSplitInsertionFromFileFunctions:
     def parse_file(file, sep, header=False):
         data = []
         try:
-            with open(file, 'r') as f:
+            with open(file, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
                 if header:
-                    lines = lines[1:]  # Exclude header if present
+                    pass
+                   # header = lines[0].strip().split(sep)
+                   # lines = lines[1:]  # Exclude header if present
 
                 incomplete_line = ''
                 for idx, line in enumerate(lines):
@@ -227,9 +230,14 @@ class DataSplitInsertionFromFileFunctions:
                         # Add the incomplete part to the last read line
                         temp1 = data[-1][-1]
                         temp2 = f' {line}'
-                        data[-1][-1]  = temp1[:-1] + temp2[2:-1]
+                        data[-1][-1] = temp1[:-1] + temp2[2:-1]
                     else:
                         data.append(row)
+                # Check for empty cells and replace with 'non'
+            for i in range(len(data)):
+                for j in range(len(data[i])):
+                    if data[i][j] == '':
+                        data[i][j] = None
 
             if header:
                 headers = data[0]
@@ -242,7 +250,7 @@ class DataSplitInsertionFromFileFunctions:
             res = {header: [] for header in headers}
             for i, header in enumerate(headers):
                 column_data = [row[i] for row in data]
-                
+
                 # Attempt to infer data types
                 column_series = pd.Series(column_data)
 
@@ -271,13 +279,22 @@ class DataSplitInsertionFromFileFunctions:
 
         except Exception as e:
             print(f"Error parsing file: {e}")
-            return None
+            return None, None
+
 
         
     
-    def upload_file_to_dataframe_json(file):
+    def upload_file_to_dataframe_json(file, sep):
         try:
-            df = pd.read_json(file)
+            df = pd.read_json(file, sep,)
+            return df
+        except Exception as e:
+            print(f"Error converting file to dataframe: {e}")
+            return -1
+        
+    def upload_file_to_dataframe_excel(file, sep,header,):
+        try:
+            df = pd.read_excel(file, sep,header=header)
             return df
         except Exception as e:
             print(f"Error converting file to dataframe: {e}")
@@ -340,23 +357,36 @@ class DataInsertionStep:
             # Parse the CSV file
             data, headers = DataSplitInsertionFromFileFunctions.parse_file(
                 chemin_fichier, sep, header)
-            print(data.dtypes)
-        elif type_file == 'EXCEL':
-            data = pd.read_excel(chemin_fichier)
+            if data is None:
+                return -1, None, None
+        elif (type_file == 'XLSX' | type_file == 'XLS') :
+            data = DataSplitInsertionFromFileFunctions.upload_file_to_dataframe_excel(chemin_fichier, sep,header)
+            
         elif type_file == 'JSON':
             # Parse the JSON file
-            data = DataSplitInsertionFromFileFunctions.upload_file_to_dataframe_json(
-                chemin_fichier)
+            data = DataSplitInsertionFromFileFunctions.upload_file_to_dataframe_json(chemin_fichier, sep)
+            
         elif type_file == 'XML':
-            return -1
+            return -1, None, None
         elif type_file == 'SQL':
-            return -1
+            return -1, None, None
         else:
-            return -1
-
+            return -1,None,None
+        
         db_name = table_name 
 
         # TODO : 1FN
        # data = DataSplitInsertionFromFileFunctions.verify1FN(data)
 
         return DBFunctions.insert_dataframe_into_postgresql_table(data, headers, db_name), data, db_name
+    
+    
+    def separateur (separateur) : 
+        if separateur == "Virgule" : 
+            return ","
+        elif separateur == "Point virgule" : 
+            return ";"
+        elif separateur == "Tabulation" : 
+            return "\t"
+        else : 
+            return ","
