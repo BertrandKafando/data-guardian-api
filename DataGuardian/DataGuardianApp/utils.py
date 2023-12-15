@@ -156,7 +156,6 @@ class DBFunctions:
             # On suppose que toutes les règles varchars s'appliquent sur cette colonne (On a pas encore la possibilité de connaitre la sémantique)
 
             contraintes = MetaTousContraintes.objects.filter(category__icontains="String")
-
             for constraint in contraintes : 
 
                 result_count_values_not_matching_regex = DBFunctions.executer_fonction_postgresql('count_values_not_matching_regex', nom_bd, col_instance.nom_colonne, constraint.contrainte)
@@ -168,11 +167,9 @@ class DBFunctions:
                         anomalie = MetaAnomalie()
                         anomalie.nom_anomalie = constraint.nom_contrainte
                         anomalie.valeur_trouvee = int(result_count_values_not_matching_regex[0])
-
                         anomalie.save()
-
-                        col_instance.meta_anomalie = anomalie
-
+                        col_instance.meta_anomalie.add(anomalie)
+                        
             col_instance.contraintes.add(*contraintes)
             col_instance.save()
             new_columns_instance.append(col_instance)
@@ -187,7 +184,7 @@ class DBFunctions:
     def check_1FN(columns, nom_bd) : 
 
         new_columns_instance = list()
-
+        anomalies = []
         for col_instance in columns :
 
             result_1FN_checking = DBFunctions.executer_fonction_postgresql('isColumnIn1NF', str(nom_bd).lower(), str(col_instance.nom_colonne).lower())
@@ -203,8 +200,8 @@ class DBFunctions:
                 anomalie.valeur_trouvee = 0 #False
 
             anomalie.save()
-
-            col_instance.meta_anomalie = anomalie
+            anomalies.append(anomalie)
+            col_instance.meta_anomalie.add(anomalie)
             col_instance.save()
             new_columns_instance.append(col_instance)
 
