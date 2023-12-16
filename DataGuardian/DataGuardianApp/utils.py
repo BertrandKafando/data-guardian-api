@@ -70,7 +70,6 @@ class DBFunctions:
             with connection.cursor() as cursor:
                 dtype_mapping = {col: DBFunctions.map_numpy_type_to_sql(str(dataframe[col].dtype)) for col in dataframe.columns}
                 columns = ', '.join( [f"{DBFunctions.clean_column_name(header)} {dtype_mapping[header]}" for header in dataframe.columns])
-                print(columns)
                 
                 cursor.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});")
                 # Disable constraint checks temporarily
@@ -343,7 +342,6 @@ class DataSplitInsertionFromFileFunctions:
 
             if header:
                 headers = data[0]
-                print(headers)
                 data = data[1:]
             else:
                 # If no header, generate default column names
@@ -384,8 +382,6 @@ class DataSplitInsertionFromFileFunctions:
                 if header is None:
                     data_res.rename(
                         columns={header: f"index{i}"}, inplace=True)
-                    
-            print(data_res.head(5))
 
             return data_res
 
