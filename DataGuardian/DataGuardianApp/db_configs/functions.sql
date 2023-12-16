@@ -276,7 +276,7 @@ DECLARE
   minValue VARCHAR(4000);
 BEGIN
   -- Vérifiez d'abord que le nom de la colonne et de la table sont corrects
-  RAISE NOTICE 'Recherche du type pour la colonne % dans la table %', Nom_COL, NOMTAB;
+  -- RAISE NOTICE 'Recherche du type pour la colonne % dans la table %', Nom_COL, NOMTAB;
 
   -- Determine the data type of the column
   SELECT DATA_TYPE INTO ColType
@@ -343,7 +343,7 @@ EXCEPTION
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to count outliers based on the z-score
+--Function to count outliers based on the z-score
 CREATE OR REPLACE FUNCTION count_outliers(NOMTAB VARCHAR, Nom_COL VARCHAR, z_threshold NUMERIC) RETURNS INTEGER AS
 $$
 DECLARE
@@ -1491,7 +1491,7 @@ DECLARE
 BEGIN
 
     column_type := TypeDesColonne(NOMTAB, Nom_COL);
-    RAISE NOTICE column_type;
+    RAISE NOTICE '%', column_type;
     IF column_type NOT IN ('integer', 'bigint', 'numeric', 'real', 'double precision') THEN
         RETURN -1; 
     END IF;
