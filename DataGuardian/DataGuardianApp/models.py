@@ -246,7 +246,7 @@ class MetaColonne(models.Model):
     nom_colonne = models.CharField(max_length=200)
     type_donnees = models.CharField(max_length=200)
     date_creation = models.DateTimeField(auto_now_add=True)
-    date_diagnostic = models.DateField(null=True, blank=True)
+    date_diagnostic = models.DateTimeField(auto_now_add=True)
     nombre_valeurs = models.IntegerField(null=True, blank=True)
     nombre_valeurs_manquantes = models.IntegerField(null=True, blank=True)
     nombre_outliers = models.IntegerField(null=True, blank=True)
@@ -255,12 +255,12 @@ class MetaColonne(models.Model):
     nombre_anomalies = models.IntegerField(null=True, blank=True)
     nombre_majuscules = models.IntegerField(null=True, blank=True)
     nombre_minuscules = models.IntegerField(null=True, blank=True)
-    nombre_init_cap = models.IntegerField(null=True, blank=True)
+    nombre_init_cap = models.IntegerField(null=True, blank=True) 
     col_min = models.CharField(max_length=100, null=True, blank=True)
     col_max = models.CharField(max_length=100, null=True, blank=True)
     dependances = models.CharField(max_length=200, null=True, blank=True)
     meta_table = models.ForeignKey(MetaTable,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
-    meta_special_car = models.ForeignKey(MetaSpecialCar,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
+    meta_special_car = models.ForeignKey(MetaSpecialCar,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True) # TODO
     meta_anomalie = models.ManyToManyField(MetaAnomalie, related_name='meta_colonne', symmetrical=False, blank=True)
     contraintes = models.ManyToManyField(MetaTousContraintes, related_name='meta_colonne', symmetrical=False, blank=True)
 

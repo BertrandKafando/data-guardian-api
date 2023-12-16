@@ -70,7 +70,6 @@ class DBFunctions:
             with connection.cursor() as cursor:
                 dtype_mapping = {col: DBFunctions.map_numpy_type_to_sql(str(dataframe[col].dtype)) for col in dataframe.columns}
                 columns = ', '.join( [f"{DBFunctions.clean_column_name(header)} {dtype_mapping[header]}" for header in dataframe.columns])
-                print(columns)
                 #columns = columns = ", ".join([f"{DBFunctions.clean_column_name(header)} VARCHAR(255)" for header in headers])
                 cursor.execute(
                     f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});")
@@ -97,7 +96,7 @@ class DBFunctions:
         numpy_sql_type_mapping = {
             'int64': 'INTEGER',
             'float64': 'FLOAT',
-            'object': 'VARCHAR(255)',
+            'object': 'VARCHAR(500)',
             # Ajoutez d'autres mappings selon vos besoins
         }
         return numpy_sql_type_mapping.get(dtype, 'TEXT')
@@ -138,12 +137,23 @@ class DBFunctions:
             meta_colonne = MetaColonne()
             meta_colonne.nom_colonne = col
             result_nb_nulls = DBFunctions.executer_fonction_postgresql('NombreDeNULLs', nom_bd, col)
+            result_type_col = DBFunctions.executer_fonction_postgresql('TypeDesColonne', str(nom_bd).lower(), str(col).lower())
+
 
             if type(result_nb_nulls) != int :
                 meta_colonne.nombre_valeurs_manquantes = result_nb_nulls[0]
                 meta_colonne.meta_table = meta_table
-                meta_colonne.save()
-                meta_col_instances.append(meta_colonne)
+            else :
+                meta_colonne.meta_table = meta_table
+    
+            if type(result_type_col) != int :
+                if result_type_col[0] :
+                    meta_colonne.type_donnees = result_type_col[0]
+
+            meta_colonne.nombre_valeurs = meta_table.nombre_lignes
+            meta_colonne.save()
+
+            meta_col_instances.append(meta_colonne)
 
         return meta_col_instances
     
@@ -172,6 +182,23 @@ class DBFunctions:
                         col_instance.meta_anomalie.add(anomalie)
                         
             col_instance.contraintes.add(*contraintes)
+
+            anomalies = col_instance.meta_anomalie.all()
+
+            nb_anomalies = 0
+
+            if anomalies :
+
+                for anomalie_elt in anomalies :
+                    if anomalie_elt.nom_anomalie == "Premiere Forme normale" :
+                        if anomalie_elt.valeur_trouvee == 0 :
+                            nb_anomalies += 1
+                    else :
+                        if isinstance(anomalie_elt.valeur_trouvee, int) :
+                            if anomalie_elt.valeur_trouvee > 0 :
+                                nb_anomalies += anomalie_elt.valeur_trouvee
+
+            col_instance.nombre_anomalies = nb_anomalies
             col_instance.save()
             new_columns_instance.append(col_instance)
 
@@ -209,17 +236,27 @@ class DBFunctions:
 
         for col_instance in columns :
 
-            result_outliers = DBFunctions.executer_fonction_postgresql('count_outliers', nom_bd, col_instance.nom_colonne, 1)
+            result_type_col = DBFunctions.executer_fonction_postgresql('TypeDesColonne',str(nom_bd).lower(), str(col_instance.nom_colonne).lower())
 
-            print(result_outliers)
+            if result_type_col[0] == 'integer' :
 
-            if type(result_outliers) != int :
+                result_outliers = DBFunctions.executer_fonction_postgresql('count_outliers', str(nom_bd).lower(), str(col_instance.nom_colonne).lower(), 1.5)
 
-                if result_outliers[0] > 0 :
-                    col_instance.nombre_outliers = result_outliers[0]
+                col_instance.nombre_outliers = 0
 
-            col_instance.save()
-            new_columns_instance.append(col_instance)
+                if isinstance(result_outliers, tuple)  :
+                    if result_outliers[0] > 0 :
+                        col_instance.nombre_outliers = result_outliers[0]
+
+                col_instance.save()
+                new_columns_instance.append(col_instance)
+
+            else :
+                col_instance.nombre_outliers = 0
+                col_instance.save()
+                new_columns_instance.append(col_instance)
+
+        return new_columns_instance
 
 
     def check_cols_repetitions(columns, nom_bd) : 
@@ -228,18 +265,21 @@ class DBFunctions:
 
         for col_instance in columns :
 
-            result_cols_repetitions = DBFunctions.executer_fonction_postgresql('VerifierDuplication',nom_bd, col_instance.nom_colonne)
+            result_cols_repetitions = DBFunctions.executer_fonction_postgresql('VerifierDuplication',str(nom_bd).lower(), col_instance.nom_colonne)
 
-            if result_cols_repetitions :
-                    
-                anomalie = MetaAnomalie()
-                anomalie.nom_anomalie = "Repetition de colonne"
-                anomalie.valeur_trouvee = result_cols_repetitions[0]
-                anomalie.save()
+            if isinstance(result_cols_repetitions, tuple):
+                if result_cols_repetitions :
+                        
+                    anomalie = MetaAnomalie()
+                    anomalie.nom_anomalie = "Repetition de colonne"
+                    anomalie.valeur_trouvee = result_cols_repetitions[0]
+                    anomalie.save()
 
-            col_instance.meta_anomalie.add(anomalie)
+                col_instance.meta_anomalie.add(anomalie)
             col_instance.save()
             new_columns_instance.append(col_instance)
+
+        return new_columns_instance
 
 
     def get_other_stats(columns, nom_bd) : 
@@ -248,37 +288,28 @@ class DBFunctions:
 
         for col_instance in columns :
 
-            result_uppercases = DBFunctions.executer_fonction_postgresql('CountUppercaseNames',nom_bd, col_instance.nom_colonne)
-            result_lowercases = DBFunctions.executer_fonction_postgresql('CountLowercaseNames',nom_bd, col_instance.nom_colonne)
-            result_init_caps = DBFunctions.executer_fonction_postgresql('CountInitcapNames',nom_bd, col_instance.nom_colonne)
-            result_min_val = DBFunctions.executer_fonction_postgresql('get_min_value',nom_bd, col_instance.nom_colonne)
-            result_max_val = DBFunctions.executer_fonction_postgresql('get_max_value',nom_bd, col_instance.nom_colonne)
-            result_type_col = DBFunctions.executer_fonction_postgresql('TypeDesColonne',nom_bd, col_instance.nom_colonne)
+            result_uppercases = DBFunctions.executer_fonction_postgresql('CountUppercaseNames', str(nom_bd).lower(), str(col_instance.nom_colonne).lower())
+            result_lowercases = DBFunctions.executer_fonction_postgresql('CountLowercaseNames', str(nom_bd).lower(), str(col_instance.nom_colonne).lower())
+            result_init_caps = DBFunctions.executer_fonction_postgresql('CountInitcapNames', str(nom_bd).lower(), str(col_instance.nom_colonne).lower())
+            result_min_val = DBFunctions.executer_fonction_postgresql('get_min_value', str(col_instance.nom_colonne).lower(), str(nom_bd).lower())
+            result_max_val = DBFunctions.executer_fonction_postgresql('get_max_value', str(col_instance.nom_colonne).lower(), str(nom_bd).lower())
 
-
-            if type(result_uppercases) != int :
-                if result_uppercases[0] > 0 :
+            if isinstance(result_uppercases, tuple):
                     col_instance.nombre_majuscules = result_uppercases[0]
 
-            if type(result_lowercases) != int :
-                if result_lowercases[0] > 0 :
-                    col_instance.nombre_miniscules = result_lowercases[0]
+            if isinstance(result_lowercases, tuple) :
+                    col_instance.nombre_minuscules = result_lowercases[0]
 
-            if type(result_init_caps) != int :
-                if result_init_caps[0] > 0 :
+            if isinstance(result_init_caps, tuple) :
                     col_instance.nombre_init_cap = result_init_caps[0]
 
             if type(result_min_val) != int :
-                if result_min_val[0] > 0 :
+                if result_min_val[0] :
                     col_instance.col_min = result_min_val[0]
 
             if type(result_max_val) != int :
-                if result_max_val[0] > 0 :
+                if result_max_val[0] :
                     col_instance.col_max = result_max_val[0]
-
-            if type(result_type_col) != int :
-                if result_type_col[0] > 0 :
-                    col_instance.type_donnees = result_type_col[0]
 
             col_instance.save()
             new_columns_instance.append(col_instance)
@@ -448,7 +479,7 @@ class DataInsertionStep:
         elif type_file == 'SQL':
             return -1, None, None
         else:
-            return -1,None,None
+            return -1, None, None
         
         db_name = table_name 
 

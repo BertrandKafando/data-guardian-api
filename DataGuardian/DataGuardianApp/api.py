@@ -175,7 +175,8 @@ class BaseDeDonneesViewSet(ModelViewSet):
     def get_queryset(self):
 
         base_de_donnees = self.request.query_params.get('base_de_donnees')
-        project_id = int(self.request.query_params.get('project_id') ) # Ajout du paramètre project_id
+        project_id = self.request.query_params.get('project_id') # Ajout du paramètre project_id
+
         queryset = BaseDeDonnees.objects.all()
 
         if base_de_donnees:
@@ -183,7 +184,8 @@ class BaseDeDonneesViewSet(ModelViewSet):
             queryset = queryset.filter(nom_base_de_donnees__icontains=base_de_donnees)   
             
         if project_id:  # Filtrer par project_id s'il est présent
-            queryset = queryset.filter(projet_id=project_id)     
+
+            queryset = queryset.filter(projet_id=int(project_id))   
 
         return queryset
 
@@ -284,7 +286,6 @@ class DiagnosticViewSet(APIView):
         parametre_diagnostic = diagnostic_data.pop("parametre_diagnostic")
 
         diagnostic_data = DBFunctions.extract_nested_data(request)
-        print("diagnostic_data", diagnostic_data)
 
         base_de_donnees_data = diagnostic_data.pop('base_de_donnees', None)
 
@@ -317,11 +318,11 @@ class DiagnosticViewSet(APIView):
             separateur = DataInsertionStep.separateur(
                 base_de_donnees.separateur)
             
-            print('base_de_donnees.avec_entete', base_de_donnees.avec_entete)
-
             # chemin_fichier, sep, header=False, table_name='', type_file='CSV'
             table_creation_result, df, db_name = DataInsertionStep.data_insertion(
                 chemin_fichier_csv,separateur, base_de_donnees.avec_entete, base_de_donnees.nom_base_de_donnees, base_de_donnees.type_fichier)
+            
+            print(df)
             
 
             if table_creation_result == 0 :
@@ -395,14 +396,19 @@ class DiagnosticViewSet(APIView):
                 diagnostic.status = Diagnostic.TERMINE
                 diagnostic_data = DiagnosticSerializer(diagnostic).data
 
-            else :
+                return Response({
+                    "diagnostic" : diagnostic_data
+                }, status=status.HTTP_200_OK)
 
+            else :
                 diagnostic.status = Diagnostic.ECHEC
                 diagnostic_data = DiagnosticSerializer(diagnostic).data
 
-        return Response({
-            "diagnostic" : diagnostic_data
-        }, status=status.HTTP_200_OK)
+                return Response({
+                    "diagnostic" : diagnostic_data
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
  
 
 
@@ -492,6 +498,7 @@ class MetaColonneViewSet(ModelViewSet):
 
 
     def get_queryset(self):
+
         meta_table_id = self.request.query_params.get('meta_table_id')
 
         if meta_table_id:

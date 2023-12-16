@@ -275,29 +275,44 @@ DECLARE
   ColType VARCHAR(20);
   minValue VARCHAR(4000);
 BEGIN
+  -- Vérifiez d'abord que le nom de la colonne et de la table sont corrects
+  RAISE NOTICE 'Recherche du type pour la colonne % dans la table %', Nom_COL, NOMTAB;
+
   -- Determine the data type of the column
   SELECT DATA_TYPE INTO ColType
   FROM INFORMATION_SCHEMA.COLUMNS
-  WHERE TABLE_NAME = LOWER(NOMTAB) AND COLUMN_NAME = LOWER(Nom_COL);
+  WHERE TABLE_SCHEMA = 'public' -- Remplacez par le schéma approprié si nécessaire
+  AND TABLE_NAME = NOMTAB 
+  AND COLUMN_NAME = Nom_COL;
+
+  -- Si le type de colonne n'est pas trouvé, renvoyez NULL
+  IF ColType IS NULL THEN
+    RAISE NOTICE 'Type de colonne non trouvé pour % dans %', Nom_COL, NOMTAB;
+    RETURN NULL;
+  END IF;
+
+  RAISE NOTICE 'Type de colonne trouvé: %', ColType;
 
   -- Use the appropriate sub-function based on the column type
   IF ColType = 'character varying' OR ColType = 'character' THEN
-    -- String column
     minValue := get_min_characters(Nom_COL, NOMTAB)::VARCHAR;
   ELSIF ColType = 'integer' THEN
-    -- Numeric column
     minValue := get_min_numerics(Nom_COL, NOMTAB)::VARCHAR;
   ELSIF ColType = 'date' THEN
-    -- Date column
     minValue := get_min_dates(Nom_COL, NOMTAB)::VARCHAR;
   ELSE
-    -- Handle other data types if necessary
+    RAISE NOTICE 'Type de données non géré: %', ColType;
     minValue := NULL;
   END IF;
 
   RETURN minValue;
+EXCEPTION
+  WHEN OTHERS THEN
+    RAISE NOTICE 'Erreur dans get_min_value: %', SQLERRM;
+    RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
+
 
 -- Function to compute the mean of numeric values in a column
 CREATE OR REPLACE FUNCTION compute_mean_numeric (Nom_COL VARCHAR, NOMTAB VARCHAR) RETURNS NUMERIC AS
@@ -1476,6 +1491,7 @@ DECLARE
 BEGIN
 
     column_type := TypeDesColonne(NOMTAB, Nom_COL);
+    RAISE NOTICE column_type;
     IF column_type NOT IN ('integer', 'bigint', 'numeric', 'real', 'double precision') THEN
         RETURN -1; 
     END IF;
