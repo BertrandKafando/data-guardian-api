@@ -20,14 +20,12 @@ now = timezone.now()
 BASE_DIR = settings.BASE_DIR
 
 
-#ok
 class RoleSerializer(serializers.ModelSerializer):
     
     class Meta:
         model=Role
         fields=["nom_role","creation", "modification"]
 
-#ok
 class CompteSerializer(serializers.ModelSerializer):
 
     mot_de_passe=serializers.CharField(
@@ -89,7 +87,6 @@ class CompteSerializer(serializers.ModelSerializer):
         return super(CompteSerializer, self).update(instance,validated_data)
     
 
-#ok
 class UtilisateurSerializer(serializers.ModelSerializer):
     
     compte = CompteSerializer(required=False)
@@ -177,6 +174,7 @@ class UtilisateurSerializer(serializers.ModelSerializer):
 
         if 'compte' in validated_data :
             compte = validated_data.pop('compte')
+            compte.pop("mot_de_passe")
 
         if 'role' in validated_data :
             role = validated_data.pop('role')
@@ -194,7 +192,6 @@ class UtilisateurSerializer(serializers.ModelSerializer):
         return super(UtilisateurSerializer,self).update(instance, validated_data)
 
 
-#ok
 class CritereSerializer(serializers.ModelSerializer):
     
     class Meta:
@@ -209,22 +206,57 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+    EXT_MAPPING = {
+        "xlsx": BaseDeDonnees.CSV,
+        "xls": BaseDeDonnees.CSV,
+        "csv": BaseDeDonnees.CSV,
+        "sql": BaseDeDonnees.SQL,
+        "txt": BaseDeDonnees.TEXT,
+        "json": BaseDeDonnees.JSON,
+        "xml": BaseDeDonnees.XML
+    }
+
+    def get_file_type(ext):
+        return BaseDeDonneesSerializer.EXT_MAPPING.get(ext.lower(), None)
+
+
+    def get_file_format(fichier_type):
+
+        if fichier_type.upper() in ['CSV', 'SQL']:
+            return 'Tabulaire'
+        elif fichier_type.upper() in ['JSON', 'XML']:
+            return 'Orienté objet'
+        elif fichier_type.upper() == 'TEXT':
+            return 'En colonne'
+        else:
+            return 'Format inconnu'
+
+
     def create(self, validated_data):
 
         fichier = validated_data.pop('fichier_bd', None)
-        print("validated_data")
 
         if fichier : 
             validated_data['nom_fichier'] = fichier.name
             validated_data['taille_fichier'] = str(round(fichier.size / (1024 * 1024), 6)) + "MB"
+            time = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    ).replace(":", "").replace(".", "").replace(" ", "").replace("-", "")
+            
+            validated_data['nom_base_de_donnees'] =  fichier.name.split(".")[0].strip() + time
+            extension = str(fichier.name.split('.')[-1])
+            validated_data['type_fichier'] = BaseDeDonneesSerializer.get_file_type(extension)
+            validated_data['format_fichier'] = BaseDeDonneesSerializer.get_file_format(extension)
 
-        base_de_donnees = BaseDeDonnees.objects.create( **validated_data)
+        base_de_donnees = BaseDeDonnees.objects.create( 
+            fichier_bd = fichier, 
+            **validated_data
+        )
+
         return base_de_donnees
     
 
     def update(self, instance, validated_data):
         
-        print("validated_data")
         fichier = validated_data.pop('fichier_bd', None)
          
         if fichier:
@@ -247,8 +279,7 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
 
 class DiagnosticSerializer(serializers.Serializer):
 
-    utilisateur = serializers.CharField(required=False)
-    criteres = CritereSerializer(many=True, required=False)
+    parametre_diagnostic = serializers.CharField(required=False)
     base_de_donnees = BaseDeDonneesSerializer(required=False)
 
     class Meta:
@@ -257,7 +288,7 @@ class DiagnosticSerializer(serializers.Serializer):
 
     def update(self, instance, validated_data):
 
-        instance.criteres.set(validated_data.get('criteres', instance.criteres.all()))
+        instance.parametre_diagnostic.set(validated_data.get('parametre_diagnostic', instance.criteres.all()))
         base_de_donnees_data = validated_data.get('base_de_donnees', None)
 
         if base_de_donnees_data :
@@ -300,6 +331,9 @@ class MetaTousContraintesSerializer(serializers.ModelSerializer):
 
 class MetaColonneSerializer(serializers.ModelSerializer):
 
+    meta_anomalie = MetaAnomalieSerializer(many=True)
+    contraintes = MetaTousContraintesSerializer(many=True)
+
     class Meta:
         model = MetaColonne
         fields = '__all__'
@@ -309,5 +343,3 @@ class ProjetSerializer(serializers.ModelSerializer):
     class Meta:
         model = Projet
         fields = '__all__'
-        
-

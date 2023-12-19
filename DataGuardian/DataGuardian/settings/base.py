@@ -1,7 +1,7 @@
 from pathlib import Path
 import os
 import environ
-
+import platform
 
 env = environ.Env()
 environ.Env.read_env()
@@ -151,3 +151,15 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'static/')
 # https://docs.djangoproject.com/en/3.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+syst_os = platform.system()
+
+if syst_os == "Windows":
+    OS_PLATFORM = 'WINDOWS'
+elif syst_os == "Linux":
+    OS_PLATFORM = 'LINUX'
+elif syst_os == "Darwin":
+    OS_PLATFORM = 'MACOS'
+else:
+    print("Le système d'exploitation n'est pas reconnu comme Windows, Linux ou macOS.")

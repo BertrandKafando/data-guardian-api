@@ -98,7 +98,7 @@ class Projet(models.Model):
     utilisateur = models.ForeignKey(Utilisateur, related_name="projet", on_delete=models.CASCADE, null=True, blank=True)
 
     def __str__(self):
-        return self.nom_projet
+        return  str(self.nom_projet)
 
     __repr__ = __str__
 
@@ -111,6 +111,8 @@ class BaseDeDonnees(models.Model):
     JSON = 'JSON'
     CSV ='CSV'
     XML = 'XML'
+    XLS = 'XLS'
+    XLSX = 'XLSX'
 
     CHOIX_FICHIER = [
         (SQL, 'SQL'),
@@ -118,6 +120,8 @@ class BaseDeDonnees(models.Model):
         (JSON, 'JSON'),
         (CSV, 'CSV'),
         (XML, 'XML'),
+        (XLS, 'XLS'),
+        (XLSX, 'XLSX')
     ]
 
 
@@ -153,7 +157,7 @@ class BaseDeDonnees(models.Model):
     separateur = models.CharField(max_length=100, choices=CHOIX_SEPARATEUR_FICHIER)
     avec_entete = models.BooleanField(default=True)
     fichier_bd = models.FileField(
-            upload_to='uploaded_db/',
+            upload_to='media/uploaded_db/',
             validators=[
                 FileExtensionValidator(
                     allowed_extensions=["xlsx", "xls", "csv", "sql", "txt", "json", "xml"]
@@ -161,7 +165,7 @@ class BaseDeDonnees(models.Model):
             ],
         )
     
-    Projet = models.ForeignKey(Projet,related_name="base_de_donnees", on_delete=models.CASCADE, null=True, blank=True)
+    projet = models.ForeignKey(Projet,related_name="base_de_donnees", on_delete=models.CASCADE, null=True, blank=True)
 
 
     def __str__(self):
@@ -188,8 +192,7 @@ class Diagnostic(models.Model):
         max_length = 100,
         choices=CHOIX_STATUS
     )
-    Utilisateur = models.ForeignKey(Utilisateur,related_name="diagnostic", on_delete=models.CASCADE, null=True, blank=True)
-    parametre_diagnostic = models.ForeignKey(Critere, related_name='diagnostic', on_delete=models.CASCADE, blank=True)
+    parametre_diagnostic = models.ForeignKey(Critere, related_name='diagnostic', on_delete=models.CASCADE, null=True, blank=True)
     base_de_donnees = models.ForeignKey(BaseDeDonnees,related_name="diagnostic", on_delete=models.CASCADE, null=True, blank=True)
     
 
@@ -212,13 +215,14 @@ class MetaTable(models.Model):
         return self.nom_table
 
 
-# class MetaSpecialCar(models.Model):
+class MetaSpecialCar(models.Model):
 
-#     caracteres_speciaux = models.CharField(max_length=500)
+    caracteres_speciaux = models.CharField(max_length=500)
 
-#     def __str__(self):
-#         return self.caracteres_speciaux
-    
+    def __str__(self):
+        return self.caracteres_speciaux
+        
+
 class MetaTousContraintes(models.Model):
     nom_contrainte = models.CharField(max_length=100)
     category = models.CharField(max_length=300, null=True, blank=True)
@@ -231,7 +235,7 @@ class MetaTousContraintes(models.Model):
 
 class MetaAnomalie(models.Model):
     nom_anomalie = models.CharField(max_length=50)
-    valeur_trouvee = models.CharField(max_length=300, null=True, blank=True)
+    valeur_trouvee = models.IntegerField(null=True, blank=True)
 
     def __str__(self):
         return self.nom_anomalie
@@ -242,7 +246,7 @@ class MetaColonne(models.Model):
     nom_colonne = models.CharField(max_length=200)
     type_donnees = models.CharField(max_length=200)
     date_creation = models.DateTimeField(auto_now_add=True)
-    date_diagnostic = models.DateField(null=True, blank=True)
+    date_diagnostic = models.DateTimeField(auto_now_add=True)
     nombre_valeurs = models.IntegerField(null=True, blank=True)
     nombre_valeurs_manquantes = models.IntegerField(null=True, blank=True)
     nombre_outliers = models.IntegerField(null=True, blank=True)
@@ -251,16 +255,16 @@ class MetaColonne(models.Model):
     nombre_anomalies = models.IntegerField(null=True, blank=True)
     nombre_majuscules = models.IntegerField(null=True, blank=True)
     nombre_minuscules = models.IntegerField(null=True, blank=True)
-    nombre_init_cap = models.IntegerField(null=True, blank=True)
+    nombre_init_cap = models.IntegerField(null=True, blank=True) 
     col_min = models.CharField(max_length=100, null=True, blank=True)
     col_max = models.CharField(max_length=100, null=True, blank=True)
+    dependances = models.CharField(max_length=200, null=True, blank=True)
     meta_table = models.ForeignKey(MetaTable,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
-    #meta_special_car = models.ForeignKey(MetaSpecialCar,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
-    meta_anomalie = models.ForeignKey(MetaAnomalie,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True)
+    meta_special_car = models.ForeignKey(MetaSpecialCar,related_name="meta_colonne", on_delete=models.CASCADE, null=True, blank=True) # TODO
+    meta_anomalie = models.ManyToManyField(MetaAnomalie, related_name='meta_colonne', symmetrical=False, blank=True)
     contraintes = models.ManyToManyField(MetaTousContraintes, related_name='meta_colonne', symmetrical=False, blank=True)
 
     def __str__(self):
         return self.nom_colonne
     
     
-
