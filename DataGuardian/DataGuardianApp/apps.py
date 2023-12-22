@@ -22,6 +22,32 @@ class DataguardianappConfig(AppConfig):
         super().ready()
         post_migrate.connect(run_sql_scripts, sender=self)
 
+        # Importation du modèle à l'intérieur de la fonction ready
+        from .models import MetaTousContraintes
+
+        # Fonction pour ajouter des données initiales
+        @receiver(post_migrate)
+        def ajouter_donnees_initiales(sender, **kwargs):
+            # Insérer vos nouvelles données ici
+            donnees = [
+                {'nom_contrainte': 'Espace superflus', 'category': 'String',
+                    'contrainte': '(){2,}', 'commentaire': 'pour rechercher des espaces superflus'},
+                {'nom_contrainte': 'Répitions de trois lettres consécutives', 'category': 'String',
+                    'contrainte': '(.)\\1\\1', 'commentaire': 'pour rechercher des répétitions de trois lettres consécutives'},
+                {'nom_contrainte': 'caractere speciaux', 'category': 'String',
+                    'contrainte': '[[:punct:]]', 'commentaire': 'detecter les caracteres speciaux'},
+            ]
+
+            for donnee in donnees:
+                # Utiliser get_or_create pour éviter les doublons
+                obj, created = MetaTousContraintes.objects.get_or_create(
+                    contrainte=donnee['contrainte'], defaults=donnee)
+                if not created:
+                    # Si l'objet existe déjà, mettez à jour ses champs avec les nouvelles valeurs
+                    for key, value in donnee.items():
+                        setattr(obj, key, value)
+                    obj.save()
+
 
 @receiver(post_migrate)
 def run_sql_scripts(sender, **kwargs):

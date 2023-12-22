@@ -74,7 +74,7 @@ class DBFunctions:
                 cursor.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});")
                 # Disable constraint checks temporarily
                 with connection.constraint_checks_disabled():
-                    for i in range(0,2):
+                    for i in range(0, len(dataframe)):
                         row = list(dataframe.iloc[i, :])
                         row = [val.item() if isinstance(val, np.generic) else val for val in row]
                         placeholders = ", ".join(["%s"] * len(row))
@@ -464,6 +464,7 @@ class DataInsertionStep:
         if type_file == 'CSV':
             # Parse the CSV file
             data= DataSplitInsertionFromFileFunctions.parse_file(chemin_fichier, sep, header)
+            print(data.head())
             if data is None:
                 return -1,None,None
         elif (type_file == 'XLSX' | type_file == 'XLS') :
