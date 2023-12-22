@@ -12,6 +12,7 @@ from django.utils import timezone
 from .utils import Base64
 from django.core.files.base import ContentFile
 from uuid import uuid4
+import re
 
 
 
@@ -230,6 +231,14 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
             return 'En colonne'
         else:
             return 'Format inconnu'
+        
+    def clean_table_name(name):
+        # Remove all non-alphanumeric characters
+        name = re.sub(r'[^0-9a-zA-Z_]', '_', name)
+        print(name)
+        return name
+    
+    
 
 
     def create(self, validated_data):
@@ -242,7 +251,8 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
             time = str(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     ).replace(":", "").replace(".", "").replace(" ", "").replace("-", "")
             
-            validated_data['nom_base_de_donnees'] =  fichier.name.split(".")[0].strip() + time
+            table_name = str(fichier.name.split('.')[0]) + "_" + time
+            validated_data['nom_base_de_donnees'] = BaseDeDonneesSerializer.clean_table_name(table_name)
             extension = str(fichier.name.split('.')[-1])
             validated_data['type_fichier'] = BaseDeDonneesSerializer.get_file_type(extension)
             validated_data['format_fichier'] = BaseDeDonneesSerializer.get_file_format(extension)
