@@ -65,6 +65,7 @@ class DBFunctions:
                 print(f"Erreur lors de l'exécution de la fonction {nom_fonction}: {e}")
                 return -1
 
+
     def insert_dataframe_into_postgresql_table(dataframe, headers, table_name):
         try:
             with connection.cursor() as cursor:
@@ -76,16 +77,14 @@ class DBFunctions:
 
                 # Disable constraint checks temporarily
                 with connection.constraint_checks_disabled():
-                    for i in range(0, dataframe.shape[0]):
-
-                        data = [tuple(row) for row in dataframe]
-                        
+                    for i in range(0,dataframe.shape[0]):
                         row = list(dataframe.iloc[i, :])
                         row = [val.item() if isinstance(val, np.generic)
                                else val for val in row]
                         placeholders = ", ".join(["%s"] * len(row))
                         insert_query = f"INSERT INTO {table_name} VALUES ({placeholders});"
-                        cursor.execute(insert_query, data)
+                        cursor.execute(insert_query, row)
+
             return 0
 
         except Exception as e:
