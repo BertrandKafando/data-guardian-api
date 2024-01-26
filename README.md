@@ -3,8 +3,12 @@
 # DataGuardian
 
 ## Overview
+<p align="center">
+<img src="./media/img/solution.png" >
+</p>
 
-**DataGuardian** is a Django project that uses Docker, Gunicorn and nginx. It is designed to work with Django 3.2.5.
+[👉  Have a look of Frontend ](https://github.com/BertrandKafando/data-guardian-client)
+
 
 ## Project details to know
 
