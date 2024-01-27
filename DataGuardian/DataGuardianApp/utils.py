@@ -460,6 +460,7 @@ class DataSplitInsertionFromFileFunctions:
 class DataInsertionStep:
 
     def data_insertion(chemin_fichier, sep, header=False, table_name='', type_file='CSV'):
+        print("type_file", type_file)
 
         if type_file == 'CSV':
             # Parse the CSV file
@@ -467,7 +468,7 @@ class DataInsertionStep:
             print(data.head())
             if data is None:
                 return -1,None,None
-        elif (type_file == 'XLSX' | type_file == 'XLS') :
+        elif (type_file == 'XLSX' or type_file == 'XLS') :
             data = DataSplitInsertionFromFileFunctions.upload_file_to_dataframe_excel(chemin_fichier, sep,header)
             
         elif type_file == 'JSON':
