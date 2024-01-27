@@ -31,7 +31,7 @@ class DataguardianappConfig(AppConfig):
             # Insérer vos nouvelles données ici
             donnees = [
                 {'nom_contrainte': 'Espace superflus', 'category': 'String',
-                    'contrainte': '(){2,}', 'commentaire': 'pour rechercher des espaces superflus'},
+                    'contrainte': '( ){2,}', 'commentaire': 'pour rechercher des espaces superflus'},
                 {'nom_contrainte': 'Répitions de trois lettres consécutives', 'category': 'String',
                     'contrainte': '(.)\\1\\1', 'commentaire': 'pour rechercher des répétitions de trois lettres consécutives'},
                 {'nom_contrainte': 'caractere speciaux', 'category': 'String',
