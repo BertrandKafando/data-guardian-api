@@ -310,7 +310,31 @@ class DBFunctions:
 
             col_instance.save()
             new_columns_instance.append(col_instance)
+        
+        return new_columns_instance
     
+
+    def compute_score(columns, bdd):
+        score = 0.0
+        for column in columns:
+            nombre_valeurs_manquantes =  column.nombre_valeurs_manquantes if (column.nombre_valeurs_manquantes is not None)  else 0
+            nombre_outliers =  column.nombre_outliers if (column.nombre_outliers is not None)  else 0
+            nombre_anomalies =  column.nombre_anomalies if (column.nombre_anomalies is not None)  else 0
+            nombre_valeurs = column.nombre_valeurs
+            
+            score += (nombre_valeurs_manquantes  + nombre_outliers + nombre_anomalies)/nombre_valeurs
+            # a voir (ajouter des pondérations)
+
+        score = score * 100 / len(columns)
+        #save it 
+        score_diagnostic = ScoreDiagnostic()
+        score_diagnostic.valeur = 100-score
+        score_diagnostic.bdd = bdd
+        score_diagnostic.save()
+
+        return score_diagnostic
+       
+
     # Fonction pour nettoyer les noms de colonnes
     def clean_column_name(name):
         return re.sub(r'[^0-9a-zA-Z_]', '_', name)

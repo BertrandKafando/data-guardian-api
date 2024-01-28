@@ -347,13 +347,19 @@ class DiagnosticViewSet(APIView):
 
                 if parametre_diagnostic == "VAL_MANQ" :
 
-                    DBFunctions.check_nulls(df.columns, meta_table, db_name)
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, db_name)
+                    
+                    DBFunctions.compute_score(meta_cols_instance_nulls, base_de_donnees)
+
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS" :
 
                     meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd)
 
-                    DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
+
+                    DBFunctions.compute_score(meta_cols_instances_with_constraints, base_de_donnees)
+
 
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN" :
@@ -364,6 +370,9 @@ class DiagnosticViewSet(APIView):
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
+                    DBFunctions.compute_score(meta_cols_instances_fn, base_de_donnees)
+
+
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN_DUPLICATIONS" :
 
@@ -372,6 +381,8 @@ class DiagnosticViewSet(APIView):
                     meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
+
+                    DBFunctions.compute_score(meta_cols_instances_fn, base_de_donnees)
 
 
                 if parametre_diagnostic == "ALL" :
@@ -387,6 +398,8 @@ class DiagnosticViewSet(APIView):
                     meta_cols_repetitions = DBFunctions.check_cols_repetitions(meta_cols_outliers, nom_bd)
 
                     meta_cols_others = DBFunctions.get_other_stats(meta_cols_repetitions, nom_bd)
+
+                    DBFunctions.compute_score(meta_cols_others, base_de_donnees)
 
                     #DBFunctions.check_funtional_dependancies(meta_cols_others, nom_bd)
 
@@ -458,7 +471,33 @@ class MetaAnomalieViewSet(ModelViewSet):
         queryset = MetaAnomalie.objects.all()
         return queryset
     
+class ScoreDiagnosticViewSet(ModelViewSet):
+    serializer_class= ScoreDiagnosticSerializer
 
+    # def get_permissions(self):
+    #     if self.request.method == "GET":
+    #         self.permission_classes = [IsCustomerAuthenticated | IsAdminAuthenticated]
+    #     elif self.request.method == "POST":
+    #         self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
+    #     elif self.request.method == "PUT" or self.request.method == "PATCH":
+    #         self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
+    #     elif self.request.method == "DELETE":
+    #         self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
+    #     return [permission() for permission in self.permission_classes]
+
+
+    def get_queryset(self):
+
+        bd_id = self.request.query_params.get('bd_id')
+
+        if bd_id:
+            queryset = ScoreDiagnostic.objects.filter(bdd=bd_id)
+        else:
+           queryset = ScoreDiagnostic.objects.all()
+        
+    
+        return queryset
+    
 class MetaTousContraintesViewSet(ModelViewSet):
     serializer_class= MetaTousContraintesSerializer
 

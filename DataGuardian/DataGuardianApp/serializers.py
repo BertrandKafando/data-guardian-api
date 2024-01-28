@@ -331,7 +331,12 @@ class MetaAnomalieSerializer(serializers.ModelSerializer):
         model = MetaAnomalie
         fields = '__all__'
 
+class ScoreDiagnosticSerializer(serializers.ModelSerializer):
 
+    class Meta:
+        model = ScoreDiagnostic
+        fields = '__all__'
+        
 class MetaTousContraintesSerializer(serializers.ModelSerializer):
 
     class Meta:
