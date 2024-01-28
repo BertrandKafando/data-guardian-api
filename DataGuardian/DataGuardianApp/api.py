@@ -322,7 +322,6 @@ class DiagnosticViewSet(APIView):
             table_creation_result, df, db_name = DataInsertionStep.data_insertion(
                 chemin_fichier_csv,separateur, base_de_donnees.avec_entete, base_de_donnees.nom_base_de_donnees, base_de_donnees.type_fichier)
 
-            print(df.dtypes)            
 
             if table_creation_result == 0 :
 
@@ -331,10 +330,6 @@ class DiagnosticViewSet(APIView):
                 meta_table.base_de_donnees = base_de_donnees
                 meta_table.nom_table = base_de_donnees.nom_base_de_donnees
 
-                result_nb_rows = DBFunctions.executer_fonction_postgresql(
-                    'NombreDeLignes', db_name)
-                result_nb_cols = DBFunctions.executer_fonction_postgresql(
-                    'NombreDeColonnes', db_name)
                 result_nb_rows = DBFunctions.executer_fonction_postgresql('NombreDeLignes', base_de_donnees.nom_base_de_donnees)
                 result_nb_cols = DBFunctions.executer_fonction_postgresql('NombreDeColonnes', base_de_donnees.nom_base_de_donnees)
 
@@ -509,7 +504,6 @@ class MetaColonneViewSet(ModelViewSet):
 
       
     
-
 class LoginView(APIView):
 
     serializer_class= CompteSerializer

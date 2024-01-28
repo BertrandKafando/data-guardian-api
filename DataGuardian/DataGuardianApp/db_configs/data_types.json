@@ -1,0 +1,76 @@
+{
+    "generales": {
+        "STRING" : {
+            "anomalies" : [
+                {
+                    "nom": "Espaces superflus",
+                    "regex": "(){2,}",
+                    "commentaire": "pour rechercher des espaces superflus"
+                },
+                {
+                    "nom": "Repetions de trois lettres consecutives",
+                    "regex": "(.)\\1\\1",
+                    "commentaire": "pour rechercher des espaces superflus"
+                },
+                {
+                    "nom": "caractere speciaux",
+                    "regex" : "[[:punct:]]",
+                    "commentaire": "pour rechercher des espaces superflus"
+                }
+            ]
+        }
+    },
+    "specifiques": {
+      "NOM": {
+        "type": "string",
+        "definition": "^[A-ZÀ-ÖØ-Þ '’-]{2,50}$",
+        "anomalies" : [
+            {
+                "nom": "Pas de majuscule",
+                "regex": "^[^A-Z]*$",
+                "commentaire": "pour verifier si le nom n'est pas en majuscule"
+            }
+        ]
+      },
+      "PRENOM": {
+        "type": "string",
+        "definition": "^[A-Za-zÀ-ÖØ-öø-ÿ '-]{2,50}$",
+        "anomalies" : [
+            {
+                "nom": "Pas en init cap",
+                "regex": "^[^A-Z][a-zA-Z]*$",
+                "commentaire": "pour verifier n'est pas en init cap"
+            }
+        ]   
+      },
+      "EMAIL": {
+        "type": "string",
+        "definition": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}$",
+        "anomalies" : [
+            {
+                "nom": "Pas en minuscule",
+                "regex": "^[^a-z]*$",
+                "commentaire": "pour verifier si l'email n'est pas en minuscule"
+            },
+            {
+                "nom": "Absence d'arobase",
+                "regex": "^[^@]*$",
+                "commentaire": "pour verifier s'il n'y a pas d'arobase dans l'adresse email"
+            }
+        ]
+      },
+      "TELEPHONE": {
+        "type": "string",
+        "definition": "^\\+?[0-9.\\s-]{10,20}$",
+        "anomalies" : [
+            {
+                "nom": "Caracteres non numerique",
+                "regex": "^\\d+$",
+                "commentaire": "pour verifier si numero contient des contients des caracteres non numerique"
+            }
+        ]
+      }
+    }
+  }
+  
+
