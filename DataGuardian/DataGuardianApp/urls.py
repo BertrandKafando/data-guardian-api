@@ -22,9 +22,6 @@ router.register(r'score-diagnostic', ScoreDiagnosticViewSet, basename='score-dia
 router.register(r'projet', ProjetViewSet, basename='projet')
 
 
-
-
-
 schema_view = get_schema_view(
     openapi.Info(
         title="Data Guardian : API ",
@@ -35,11 +32,12 @@ schema_view = get_schema_view(
     permission_classes=()
 )
 
+
 urlpatterns = [
     url(r'api/', include(router.urls)),
     url(r'^$', schema_view.with_ui('swagger', cache_timeout=0), name='documentation'),
     url(r'^api/diagnostic/$', DiagnosticViewSet.as_view(), name='diagnostic'),
     url(r'^api/authenticate/$', LoginView.as_view(), name='login'),
     url(r'^api/logout/$', LogoutView.as_view(), name='logout'),
-    # url(r'^api/semantic/$', SemanticInferenceView.as_view(), name='semantic')
+    url(r'^api/semantic/$', SemanticInferenceView.as_view(), name='semantic')
 ]
