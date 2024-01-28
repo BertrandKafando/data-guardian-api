@@ -321,7 +321,8 @@ class DiagnosticViewSet(APIView):
             # chemin_fichier, sep, header=False, table_name='', type_file='CSV'
             table_creation_result, df, db_name = DataInsertionStep.data_insertion(
                 chemin_fichier_csv,separateur, base_de_donnees.avec_entete, base_de_donnees.nom_base_de_donnees, base_de_donnees.type_fichier)
-            
+
+            print(df.dtypes)            
 
             if table_creation_result == 0 :
 

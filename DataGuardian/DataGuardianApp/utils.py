@@ -65,22 +65,27 @@ class DBFunctions:
                 print(f"Erreur lors de l'exécution de la fonction {nom_fonction}: {e}")
                 return -1
 
-    def insert_dataframe_into_postgresql_table(dataframe, table_name):
+    def insert_dataframe_into_postgresql_table(dataframe, headers, table_name):
         try:
             with connection.cursor() as cursor:
                 dtype_mapping = {col: DBFunctions.map_numpy_type_to_sql(str(dataframe[col].dtype)) for col in dataframe.columns}
                 columns = ', '.join( [f"{DBFunctions.clean_column_name(header)} {dtype_mapping[header]}" for header in dataframe.columns])
-                
-                cursor.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});")
+                #columns = columns = ", ".join([f"{DBFunctions.clean_column_name(header)} VARCHAR(255)" for header in headers])
+                cursor.execute(
+                    f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});")
+
                 # Disable constraint checks temporarily
                 with connection.constraint_checks_disabled():
-                    for i in range(0, len(dataframe)):
+                    for i in range(0, dataframe.shape[0]):
+
+                        data = [tuple(row) for row in dataframe]
+                        
                         row = list(dataframe.iloc[i, :])
-                        row = [val.item() if isinstance(val, np.generic) else val for val in row]
+                        row = [val.item() if isinstance(val, np.generic)
+                               else val for val in row]
                         placeholders = ", ".join(["%s"] * len(row))
                         insert_query = f"INSERT INTO {table_name} VALUES ({placeholders});"
-                        cursor.execute(insert_query, row)
-
+                        cursor.execute(insert_query, data)
             return 0
 
         except Exception as e:
@@ -322,6 +327,10 @@ class DataSplitInsertionFromFileFunctions:
         try:
             with open(file, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
+                if header:
+                    pass
+                   # header = lines[0].strip().split(sep)
+                   # lines = lines[1:]  # Exclude header if present
 
                 incomplete_line = ''
                 for idx, line in enumerate(lines):
@@ -375,19 +384,12 @@ class DataSplitInsertionFromFileFunctions:
 
                 # If unable to convert to numeric or datetime, keep as object
                 res[header] = column_series
-            #convert to dataframe
-            data_res = pd.DataFrame(res)
-            #check if  there is a header with None value
-            for i, header in enumerate(data_res.columns):
-                if header is None:
-                    data_res.rename(
-                        columns={header: f"index{i}"}, inplace=True)
 
-            return data_res
+            return pd.DataFrame(res), headers
 
         except Exception as e:
             print(f"Error parsing file: {e}")
-            return None
+            return None, None
 
 
         
@@ -464,11 +466,11 @@ class DataInsertionStep:
 
         if type_file == 'CSV':
             # Parse the CSV file
-            data= DataSplitInsertionFromFileFunctions.parse_file(chemin_fichier, sep, header)
-            print(data.head())
+            data, headers = DataSplitInsertionFromFileFunctions.parse_file(
+                chemin_fichier, sep, header)
             if data is None:
-                return -1,None,None
-        elif (type_file == 'XLSX' or type_file == 'XLS') :
+                return -1, None, None
+        elif (type_file == 'XLSX' | type_file == 'XLS') :
             data = DataSplitInsertionFromFileFunctions.upload_file_to_dataframe_excel(chemin_fichier, sep,header)
             
         elif type_file == 'JSON':
@@ -487,7 +489,7 @@ class DataInsertionStep:
         # TODO : 1FN
        # data = DataSplitInsertionFromFileFunctions.verify1FN(data)
 
-        return DBFunctions.insert_dataframe_into_postgresql_table(data, db_name), data, db_name
+        return DBFunctions.insert_dataframe_into_postgresql_table(data, headers, db_name), data, db_name
     
     
     def separateur (separateur) : 
