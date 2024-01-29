@@ -208,8 +208,8 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
 
 
     EXT_MAPPING = {
-        "xlsx": BaseDeDonnees.CSV,
-        "xls": BaseDeDonnees.CSV,
+        "xlsx": BaseDeDonnees.XLSX,
+        "xls": BaseDeDonnees.XLS,
         "csv": BaseDeDonnees.CSV,
         "sql": BaseDeDonnees.SQL,
         "txt": BaseDeDonnees.TEXT,
@@ -223,7 +223,7 @@ class BaseDeDonneesSerializer(serializers.ModelSerializer):
 
     def get_file_format(fichier_type):
 
-        if fichier_type.upper() in ['CSV', 'SQL']:
+        if fichier_type.upper() in ['CSV', 'SQL', 'XLS', 'XLSX']:
             return 'Tabulaire'
         elif fichier_type.upper() in ['JSON', 'XML']:
             return 'Orienté objet'

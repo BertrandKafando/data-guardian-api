@@ -66,6 +66,7 @@ class DBFunctions:
                 return -1
 
     def insert_dataframe_into_postgresql_table(dataframe, table_name):
+        
         try:
             with connection.cursor() as cursor:
                 dtype_mapping = {col: DBFunctions.map_numpy_type_to_sql(str(dataframe[col].dtype)) for col in dataframe.columns}
@@ -74,7 +75,7 @@ class DBFunctions:
                 cursor.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});")
                 # Disable constraint checks temporarily
                 with connection.constraint_checks_disabled():
-                    for i in range(0, len(dataframe)):
+                    for i in range(0,2):
                         row = list(dataframe.iloc[i, :])
                         row = [val.item() if isinstance(val, np.generic) else val for val in row]
                         placeholders = ", ".join(["%s"] * len(row))
@@ -312,8 +313,12 @@ class DBFunctions:
             new_columns_instance.append(col_instance)
     
     # Fonction pour nettoyer les noms de colonnes
-    def clean_column_name(name):
-        return re.sub(r'[^0-9a-zA-Z_]', '_', name)
+    def clean_column_name(name):  
+        new_name = name.strip() 
+        res = re.sub(r'[^0-9a-zA-Z_]', '_', new_name)
+        res.replace('', '_')
+        res.replace('__', '_')
+        return res
      
 class DataSplitInsertionFromFileFunctions:
     
@@ -386,7 +391,7 @@ class DataSplitInsertionFromFileFunctions:
             return data_res
 
         except Exception as e:
-            print(f"Error parsing file: {e}")
+            print(f"Error parsing file csv: {e}")
             return None
 
 
@@ -400,13 +405,28 @@ class DataSplitInsertionFromFileFunctions:
             print(f"Error converting file to dataframe: {e}")
             return -1
         
-    def upload_file_to_dataframe_excel(file, sep,header,):
+    
+
+   
+
+    def upload_file_to_dataframe_excel(file, header, sep):
         try:
-            df = pd.read_excel(file, sep,header=header)
+            df = pd.read_excel(file)
+            for name in df.columns :
+                str_name = str(name)
+                if str_name.isdigit() or str_name[0].isdigit():
+                        df.rename(columns={name: f"_ch{str_name}"}, inplace=True)
+                # strip the column names
+                df.rename(columns=lambda x: x.replace(" ","_"), inplace=True)
             return df
         except Exception as e:
-            print(f"Error converting file to dataframe: {e}")
-            return -1
+            print(f"Error converting file to dataframe excel: {e}")
+            return None
+    
+    
+
+
+
        
     
     def verify1FN(dataframe):
@@ -459,24 +479,22 @@ class DataSplitInsertionFromFileFunctions:
        
 class DataInsertionStep:
 
-    def data_insertion(chemin_fichier, sep, header=False, table_name='', type_file='CSV'):
-        print("type_file", type_file)
-
+    def data_insertion(chemin_fichier, sep, header=True, table_name='', type_file='CSV'):
         if type_file == 'CSV':
             # Parse the CSV file
             data= DataSplitInsertionFromFileFunctions.parse_file(chemin_fichier, sep, header)
-            print(data.head())
             if data is None:
                 return -1,None,None
-        elif (type_file == 'XLSX' or type_file == 'XLS') :
-            data = DataSplitInsertionFromFileFunctions.upload_file_to_dataframe_excel(chemin_fichier, sep,header)
             
         elif type_file == 'JSON':
             # Parse the JSON file
             data = DataSplitInsertionFromFileFunctions.upload_file_to_dataframe_json(chemin_fichier, sep)
             
-        elif type_file == 'XML':
-            return -1, None, None
+        elif type_file == 'XLSX' or type_file == 'XLS':
+            # Parse the Excel file
+            data = DataSplitInsertionFromFileFunctions.upload_file_to_dataframe_excel(chemin_fichier,header, sep)
+            if data is None:
+                return -1,None,None
         elif type_file == 'SQL':
             return -1, None, None
         else:
