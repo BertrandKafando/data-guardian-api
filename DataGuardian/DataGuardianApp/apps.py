@@ -9,7 +9,6 @@ import pathlib
 import json
 
 
-
 BASE_DIR = settings.BASE_DIR
 OS_PLATFORM = settings.OS_PLATFORM
 env = environ.Env()
@@ -30,16 +29,6 @@ class DataguardianappConfig(AppConfig):
         # Fonction pour ajouter des données initiales
         @receiver(post_migrate)
         def ajouter_donnees_initiales(sender, **kwargs):
-            # Insérer vos nouvelles données ici
-            donnees = [
-                {'nom_contrainte': 'Espace superflus', 'category': 'String',
-                    'contrainte': '( ){2,}', 'commentaire': 'pour rechercher des espaces superflus'},
-                {'nom_contrainte': 'Répitions de trois lettres consécutives', 'category': 'String',
-                    'contrainte': '(.)\\1\\1', 'commentaire': 'pour rechercher des répétitions de trois lettres consécutives'},
-                {'nom_contrainte': 'caractere speciaux', 'category': 'String',
-                    'contrainte': '[[:punct:]]', 'commentaire': 'detecter les caracteres speciaux'},
-            ]
-
             if OS_PLATFORM == "MACOS" or OS_PLATFORM == "LINUX":
 
                 path = os.path.join(BASE_DIR, 'DataGuardian/DataGuardianApp/db_configs/data_types.json')
