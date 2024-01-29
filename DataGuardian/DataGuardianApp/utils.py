@@ -391,7 +391,7 @@ class DataSplitInsertionFromFileFunctions:
             return data_res
 
         except Exception as e:
-            print(f"Error parsing file csv: {e}")
+            print(f"Error parsing file : {e}")
             return None
 
 
