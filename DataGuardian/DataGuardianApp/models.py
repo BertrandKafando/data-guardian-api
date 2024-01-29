@@ -241,6 +241,14 @@ class MetaAnomalie(models.Model):
         return self.nom_anomalie
     
 
+class ScoreDiagnostic(models.Model):
+    valeur = models.FloatField(null=True, blank=True)
+    bdd = models.ForeignKey(BaseDeDonnees,related_name="score_diagnostic", on_delete=models.CASCADE, null=False, blank=False)
+
+    def __str__(self):
+        return self.valeur
+    
+
 class MetaColonne(models.Model):
     
     nom_colonne = models.CharField(max_length=200)

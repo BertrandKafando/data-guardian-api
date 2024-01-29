@@ -71,13 +71,16 @@ class DBFunctions:
             with connection.cursor() as cursor:
                 dtype_mapping = {col: DBFunctions.map_numpy_type_to_sql(str(dataframe[col].dtype)) for col in dataframe.columns}
                 columns = ', '.join( [f"{DBFunctions.clean_column_name(header)} {dtype_mapping[header]}" for header in dataframe.columns])
-                
-                cursor.execute(f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});")
+                #columns = columns = ", ".join([f"{DBFunctions.clean_column_name(header)} VARCHAR(255)" for header in headers])
+                cursor.execute(
+                    f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});")
+
                 # Disable constraint checks temporarily
                 with connection.constraint_checks_disabled():
-                    for i in range(0,2):
+                    for i in range(0, len(dataframe)):
                         row = list(dataframe.iloc[i, :])
-                        row = [val.item() if isinstance(val, np.generic) else val for val in row]
+                        row = [val.item() if isinstance(val, np.generic)
+                               else val for val in row]
                         placeholders = ", ".join(["%s"] * len(row))
                         insert_query = f"INSERT INTO {table_name} VALUES ({placeholders});"
                         cursor.execute(insert_query, row)
@@ -311,7 +314,31 @@ class DBFunctions:
 
             col_instance.save()
             new_columns_instance.append(col_instance)
+        
+        return new_columns_instance
     
+
+    def compute_score(columns, bdd):
+        score = 0.0
+        for column in columns:
+            nombre_valeurs_manquantes =  column.nombre_valeurs_manquantes if (column.nombre_valeurs_manquantes is not None)  else 0
+            nombre_outliers =  column.nombre_outliers if (column.nombre_outliers is not None)  else 0
+            nombre_anomalies =  column.nombre_anomalies if (column.nombre_anomalies is not None)  else 0
+            nombre_valeurs = column.nombre_valeurs
+            
+            score += (nombre_valeurs_manquantes  + nombre_outliers + nombre_anomalies)/nombre_valeurs
+            # a voir (ajouter des pondérations)
+
+        score = score * 100 / len(columns)
+        #save it 
+        score_diagnostic = ScoreDiagnostic()
+        score_diagnostic.valeur = 100-score
+        score_diagnostic.bdd = bdd
+        score_diagnostic.save()
+
+        return score_diagnostic
+       
+
     # Fonction pour nettoyer les noms de colonnes
     def clean_column_name(name):  
         new_name = name.strip() 
@@ -327,6 +354,10 @@ class DataSplitInsertionFromFileFunctions:
         try:
             with open(file, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
+                if header:
+                    pass
+                   # header = lines[0].strip().split(sep)
+                   # lines = lines[1:]  # Exclude header if present
 
                 incomplete_line = ''
                 for idx, line in enumerate(lines):
@@ -380,17 +411,12 @@ class DataSplitInsertionFromFileFunctions:
 
                 # If unable to convert to numeric or datetime, keep as object
                 res[header] = column_series
-            #convert to dataframe
-            data_res = pd.DataFrame(res)
-            #check if  there is a header with None value
-            for i, header in enumerate(data_res.columns):
-                if header is None:
-                    data_res.rename(
-                        columns={header: f"index{i}"}, inplace=True)
 
-            return data_res
+            return pd.DataFrame(res), headers
 
         except Exception as e:
+            print(f"Error parsing file: {e}")
+            return None, None
             print(f"Error parsing file csv: {e}")
             return None
 
@@ -505,7 +531,7 @@ class DataInsertionStep:
         # TODO : 1FN
        # data = DataSplitInsertionFromFileFunctions.verify1FN(data)
 
-        return DBFunctions.insert_dataframe_into_postgresql_table(data, db_name), data, db_name
+        return DBFunctions.insert_dataframe_into_postgresql_table(data, headers, db_name), data, db_name
     
     
     def separateur (separateur) : 
