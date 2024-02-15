@@ -18,10 +18,8 @@ router.register(r'meta-table', MetaTableViewSet, basename='meta-table')
 router.register(r'meta-special-car', MetaAnomalieViewSet, basename='Meta-special-car')
 router.register(r'meta-tous-contraintes', MetaTousContraintesViewSet, basename='Meta-tous-contraintes')
 router.register(r'meta-colonne', MetaColonneViewSet, basename='Meta-colonne')
+router.register(r'score-diagnostic', ScoreDiagnosticViewSet, basename='score-diagnostic')
 router.register(r'projet', ProjetViewSet, basename='projet')
-
-
-
 
 
 schema_view = get_schema_view(
@@ -34,11 +32,12 @@ schema_view = get_schema_view(
     permission_classes=()
 )
 
+
 urlpatterns = [
     url(r'api/', include(router.urls)),
     url(r'^$', schema_view.with_ui('swagger', cache_timeout=0), name='documentation'),
     url(r'^api/diagnostic/$', DiagnosticViewSet.as_view(), name='diagnostic'),
     url(r'^api/authenticate/$', LoginView.as_view(), name='login'),
     url(r'^api/logout/$', LogoutView.as_view(), name='logout'),
-    # url(r'^api/semantic/$', SemanticInferenceView.as_view(), name='semantic')
+    url(r'^api/semantic/$', SemanticInferenceView.as_view(), name='semantic')
 ]

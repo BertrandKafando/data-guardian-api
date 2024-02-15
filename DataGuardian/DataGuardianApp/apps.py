@@ -6,13 +6,14 @@ import subprocess
 import environ
 import os
 import pathlib
-
+import json
 
 
 BASE_DIR = settings.BASE_DIR
 OS_PLATFORM = settings.OS_PLATFORM
 env = environ.Env()
 environ.Env.read_env()
+
 
 class DataguardianappConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
@@ -28,25 +29,43 @@ class DataguardianappConfig(AppConfig):
         # Fonction pour ajouter des données initiales
         @receiver(post_migrate)
         def ajouter_donnees_initiales(sender, **kwargs):
-            # Insérer vos nouvelles données ici
-            donnees = [
-                {'nom_contrainte': 'Espace superflus', 'category': 'String',
-                    'contrainte': '(){2,}', 'commentaire': 'pour rechercher des espaces superflus'},
-                {'nom_contrainte': 'Répitions de trois lettres consécutives', 'category': 'String',
-                    'contrainte': '(.)\\1\\1', 'commentaire': 'pour rechercher des répétitions de trois lettres consécutives'},
-                {'nom_contrainte': 'caractere speciaux', 'category': 'String',
-                    'contrainte': '[[:punct:]]', 'commentaire': 'detecter les caracteres speciaux'},
-            ]
+            if OS_PLATFORM == "MACOS" or OS_PLATFORM == "LINUX":
 
-            for donnee in donnees:
-                # Utiliser get_or_create pour éviter les doublons
-                obj, created = MetaTousContraintes.objects.get_or_create(
-                    contrainte=donnee['contrainte'], defaults=donnee)
-                if not created:
-                    # Si l'objet existe déjà, mettez à jour ses champs avec les nouvelles valeurs
-                    for key, value in donnee.items():
-                        setattr(obj, key, value)
-                    obj.save()
+                path = os.path.join(BASE_DIR, 'DataGuardian/DataGuardianApp/db_configs/data_types.json')
+
+                with open(path) as f:
+                    config_data = json.load(f)
+
+            if OS_PLATFORM == "WINDOWS" : 
+
+                path = os.path.join(BASE_DIR, 'DataGuardian\DataGuardianApp\db_configs\\data_types.json')
+
+                with open(f) as f:
+                    config_data = json.load(f)
+
+
+            for category, constraints in config_data["generales"].items():
+                for constraint_name, anomaly_list in constraints.items():
+                    for anomaly in anomaly_list:
+
+                        MetaTousContraintes.objects.get_or_create(
+                            nom_contrainte=anomaly["nom"],
+                            category=category,
+                            contrainte=anomaly["regex"],
+                            commentaire=anomaly["commentaire"]
+                        )
+
+
+            for field_name, field_info in config_data["specifiques"].items():
+                for anomaly in field_info["anomalies"]:
+
+                    MetaTousContraintes.objects.get_or_create(
+                        nom_contrainte=anomaly["nom"],
+                        category=field_name,
+                        contrainte=anomaly["regex"],
+                        commentaire=anomaly["commentaire"]
+                    )
+
 
 
 @receiver(post_migrate)

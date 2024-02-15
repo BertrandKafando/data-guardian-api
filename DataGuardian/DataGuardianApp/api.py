@@ -24,7 +24,6 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from sqlalchemy import create_engine, text as sql_text
 from langdetect import detect, LangDetectException
-import spacy
 from collections import Counter
 import re
 import pandas as pd
@@ -33,6 +32,8 @@ import pandas as pd
 env = environ.Env()
 environ.Env.read_env()
 BASE_DIR = settings.BASE_DIR
+NLP_FR = settings.NLP_FR
+NLP_EN = settings.NLP_EN
 
 
 class RoleViewSet(ModelViewSet):
@@ -317,11 +318,10 @@ class DiagnosticViewSet(APIView):
             chemin_fichier_csv = base_de_donnees.fichier_bd.path
             separateur = DataInsertionStep.separateur(
                 base_de_donnees.separateur)
-            
             # chemin_fichier, sep, header=False, table_name='', type_file='CSV'
             table_creation_result, df, db_name = DataInsertionStep.data_insertion(
                 chemin_fichier_csv,separateur, base_de_donnees.avec_entete, base_de_donnees.nom_base_de_donnees, base_de_donnees.type_fichier)
-            
+
 
             if table_creation_result == 0 :
 
@@ -330,10 +330,6 @@ class DiagnosticViewSet(APIView):
                 meta_table.base_de_donnees = base_de_donnees
                 meta_table.nom_table = base_de_donnees.nom_base_de_donnees
 
-                result_nb_rows = DBFunctions.executer_fonction_postgresql(
-                    'NombreDeLignes', db_name)
-                result_nb_cols = DBFunctions.executer_fonction_postgresql(
-                    'NombreDeColonnes', db_name)
                 result_nb_rows = DBFunctions.executer_fonction_postgresql('NombreDeLignes', base_de_donnees.nom_base_de_donnees)
                 result_nb_cols = DBFunctions.executer_fonction_postgresql('NombreDeColonnes', base_de_donnees.nom_base_de_donnees)
 
@@ -347,13 +343,19 @@ class DiagnosticViewSet(APIView):
 
                 if parametre_diagnostic == "VAL_MANQ" :
 
-                    DBFunctions.check_nulls(df.columns, meta_table, db_name)
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, db_name)
+                    
+                    DBFunctions.compute_score(meta_cols_instance_nulls, base_de_donnees)
+
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS" :
 
                     meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd)
 
-                    DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
+
+                    DBFunctions.compute_score(meta_cols_instances_with_constraints, base_de_donnees)
+
 
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN" :
@@ -364,6 +366,9 @@ class DiagnosticViewSet(APIView):
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
+                    DBFunctions.compute_score(meta_cols_instances_fn, base_de_donnees)
+
+
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN_DUPLICATIONS" :
 
@@ -372,6 +377,8 @@ class DiagnosticViewSet(APIView):
                     meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
+
+                    DBFunctions.compute_score(meta_cols_instances_fn, base_de_donnees)
 
 
                 if parametre_diagnostic == "ALL" :
@@ -387,6 +394,8 @@ class DiagnosticViewSet(APIView):
                     meta_cols_repetitions = DBFunctions.check_cols_repetitions(meta_cols_outliers, nom_bd)
 
                     meta_cols_others = DBFunctions.get_other_stats(meta_cols_repetitions, nom_bd)
+
+                    DBFunctions.compute_score(meta_cols_others, base_de_donnees)
 
                     #DBFunctions.check_funtional_dependancies(meta_cols_others, nom_bd)
 
@@ -458,7 +467,33 @@ class MetaAnomalieViewSet(ModelViewSet):
         queryset = MetaAnomalie.objects.all()
         return queryset
     
+class ScoreDiagnosticViewSet(ModelViewSet):
+    serializer_class= ScoreDiagnosticSerializer
 
+    # def get_permissions(self):
+    #     if self.request.method == "GET":
+    #         self.permission_classes = [IsCustomerAuthenticated | IsAdminAuthenticated]
+    #     elif self.request.method == "POST":
+    #         self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
+    #     elif self.request.method == "PUT" or self.request.method == "PATCH":
+    #         self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
+    #     elif self.request.method == "DELETE":
+    #         self.permission_classes= [IsCustomerAuthenticated | IsAdminAuthenticated ]
+    #     return [permission() for permission in self.permission_classes]
+
+
+    def get_queryset(self):
+
+        bd_id = self.request.query_params.get('bd_id')
+
+        if bd_id:
+            queryset = ScoreDiagnostic.objects.filter(bdd=bd_id)
+        else:
+           queryset = ScoreDiagnostic.objects.all()
+        
+    
+        return queryset
+    
 class MetaTousContraintesViewSet(ModelViewSet):
     serializer_class= MetaTousContraintesSerializer
 
@@ -508,7 +543,6 @@ class MetaColonneViewSet(ModelViewSet):
 
       
     
-
 class LoginView(APIView):
 
     serializer_class= CompteSerializer
@@ -607,67 +641,95 @@ class ProjetViewSet(ModelViewSet):
     
     
 
-# class SemanticInferenceView(APIView):
+class SemanticInferenceView(APIView):
 
-#     http_method_names = ["head","post"]
+    http_method_names = ["head","post"]
 
-#     nlp_fr = spacy.load("fr_core_news_md")
-#     nlp_en = spacy.load("en_core_web_md")
-
-#     def determine_type_by_regex(texte, regex_patterns):
-#         for type_entite, pattern in regex_patterns.items():
-#             if re.search(pattern, texte, re.IGNORECASE):
-#                 return type_entite
-#         return None
+    def determine_type_by_regex(texte, regex_patterns):
+        for type_entite, pattern in regex_patterns.items():
+            if re.search(pattern, texte, re.IGNORECASE):
+                return type_entite
+        return None
     
 
-#     def post(self, request, *args, **kwargs):
+    def post(self, request, *args, **kwargs):
 
 
-#         engine = create_engine(f'postgresql://{env("POSTGRES_USER")}:{env("POSTGRES_PASSWORD")}/{env("POSTGRES_DB")}')
-#         conn = engine.connect()
+        engine = create_engine(f'postgresql://{env("POSTGRES_USER")}:{env("POSTGRES_PASSWORD")}/{env("POSTGRES_DB")}')
+        conn = engine.connect()
 
-#         # Définition des expressions régulières
-#         regex_patterns = {
-#             'EMAIL': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
-#             'PHONE': r'\b\d{10}\b',
-#             'DATE': r'\b\d{1,2}/\d{1,2}/\d{4}\b|\b\d{4}-\d{1,2}-\d{1,2}\b|\b\d{1,2} (Janvier|Février|Mars|Avril|Mai|Juin|Juillet|Août|Septembre|Octobre|Novembre|Décembre) \d{4}\b',
-#             'ADDRESS': r'\b(?:Rue|Avenue|Boulevard|Place|Allée|Chemin|Voie|Quai|Square|Impasse)\s[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b',
-#             'POSTAL_CODE': r'\b\d{4,5}\b',
-#             'GENRE': r'\b(Femme|F|femme|f|Homme|H|homme|h|M|Mâle|male|Femelle|femelle|Unspecified|unspecified|Non-binary|non-binary|NB|nb)\b'
-#         }
+        # Définition des expressions régulières
+        regex_patterns = {
+            'EMAIL': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+            'PHONE': r'\b\d{10}\b',
+            'DATE': r'\b\d{1,2}/\d{1,2}/\d{4}\b|\b\d{4}-\d{1,2}-\d{1,2}\b|\b\d{1,2} (Janvier|Février|Mars|Avril|Mai|Juin|Juillet|Août|Septembre|Octobre|Novembre|Décembre) \d{4}\b',
+            'ADDRESS': r'\b(?:Rue|Avenue|Boulevard|Place|Allée|Chemin|Voie|Quai|Square|Impasse)\s[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b',
+            'CODE POSTALE': r'\b\d{4,5}\b',
+            'GENRE': r'\b(Femme|F|femme|f|Homme|H|homme|h|M|Mâle|male|Femelle|femelle|Unspecified|unspecified|Non-binary|non-binary|NB|nb)\b'
+        }
 
-#         df = pd.read_sql_query(con=conn, sql=sql_text("SELECT * FROM CLIENTS"))
+        df = pd.read_sql_query(con=conn, sql=sql_text("SELECT * FROM CLIENTS"))
 
-#         # Compteur pour chaque type d'entité par colonne
-#         entites_par_colonne = {col: Counter() for col in df.columns}
+        # Compteur pour chaque type d'entité par colonne
+        entites_par_colonne = {col: Counter() for col in df.columns}
 
-#         # Analyse des colonnes
-#         for col in df.columns:
-#             for item in df[col].dropna():
-#                 texte = str(item).strip()
-#                 if texte:
+        # Analyse des colonnes
+        for col in df.columns:
+            for item in df[col].dropna():
+                texte = str(item).strip()
+                if texte:
 
-#                     # Vérifier avec les regex
-#                     regex_type = SemanticInferenceView.determine_type_by_regex(texte, regex_patterns)
-#                     if regex_type:
-#                         entites_par_colonne[col][regex_type] += 1
-#                         continue
+                    # Vérifier avec les regex
+                    regex_type = SemanticInferenceView.determine_type_by_regex(texte, regex_patterns)
+                    if regex_type:
+                        entites_par_colonne[col][regex_type] += 1
+                        continue
 
-#                     # Sinon, utiliser l'analyse NER
-#                     try:
-#                         langue = detect(texte) 
-#                         if langue != 'fr' and langue != 'en' :
-#                             langue = 'fr'
-#                     except LangDetectException:
-#                         langue = 'en'  
+                    # Sinon, utiliser l'analyse NER
+                    try:
+                        langue = detect(texte) 
+                        if langue != 'fr' and langue != 'en' :
+                            langue = 'fr'
+                    except LangDetectException:
+                        langue = 'en'  
 
-#                     nlp = SemanticInferenceView.nlp_fr if langue == 'fr' else SemanticInferenceView.nlp_en
-#                     doc = nlp(texte)
-#                     for ent in doc.ents:
-#                         entites_par_colonne[col][ent.label_] += 1
+                    nlp = NLP_FR if langue == 'fr' else NLP_EN
+                    doc = nlp(texte)
+                    for ent in doc.ents:
+                        entites_par_colonne[col][ent.label_] += 1
 
-#         type_dominant_par_colonne = {col: entites.most_common(1)[0][0] if entites else 'Aucun' for col, entites in entites_par_colonne.items()}
 
-#         return Response({'result':type_dominant_par_colonne}, status=status.HTTP_200_OK)
+        # Dictionary to map SpaCy labels to more descriptive names
+        label_map = {
+            "PER": ["CIVILITE", "NOM", "PRENOM"],
+            "NORP": "GROUPE",
+            "FAC": "INFRASTRUCTURE",
+            "ORG": "ORGANISATION",
+            "GPE": "ADRESSE",
+            "LOC": "ADRESSE",
+            "PRODUCT": "PRODUIT",
+            "EVENT": "EVENEMENT",
+            "WORK_OF_ART": "TITRE",
+            "LAW": "LOI",
+            "LANGUAGE": "LANGAGE",
+            "DATE": "DATE",
+            "TIME": "TEMPS",
+            "PERCENT": "POURCENTAGE",
+            "MONEY": "ARGENT",
+            "QUANTITY": "QUANTITE",
+            "ORDINAL": ["NIVEAU", "RANG", "CLASSE"],
+            "CARDINAL": "NUMERIQUE"
+        }
+
+        type_dominant_par_colonne = {col: entites.most_common(1)[0][0] if entites else 'Aucun' for col, entites in entites_par_colonne.items()}
+
+        # Function to map labels
+        def map_labels(data, label_map):
+            for key, value in data.items():
+                data[key] = label_map.get(value, value)
+
+        # Map the labels
+        map_labels(type_dominant_par_colonne , label_map)
+
+        return Response({'result':type_dominant_par_colonne}, status=status.HTTP_200_OK)
     
