@@ -2,12 +2,16 @@ from pathlib import Path
 import os
 import environ
 import platform
+import spacy
+
 
 env = environ.Env()
 environ.Env.read_env()
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+NLP_FR = spacy.load("fr_core_news_lg")
+NLP_EN = spacy.load("en_core_web_md")
 
 # Application definition
 
