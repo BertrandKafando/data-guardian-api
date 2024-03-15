@@ -240,6 +240,19 @@ class DBFunctions:
         return new_columns_instance
     
 
+    def count_doublons(table, nom_bd, attributs_cles) : 
+
+        result_doublons = DBFunctions.executer_fonction_postgresql('COUNT_DOUBLONS', str(nom_bd).lower(), str(attributs_cles).lower())
+
+        if 0 in result_doublons : 
+            if result_doublons[0] == 'integer' :
+                print(result_doublons)
+                table.nombre_doublons = result_doublons[0]
+                table.save()
+
+        return result_doublons
+    
+
     def check_outliers(columns, nom_bd) : 
 
         new_columns_instance = list()

@@ -378,6 +378,12 @@ class DiagnosticViewSet(APIView):
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
+                    attributsCles = ', '.join(df.columns)
+
+                    DBFunctions.count_doublons(meta_table, nom_bd, attributsCles)
+
+                    # TODO COUNT SIMILAIRE
+
                     DBFunctions.compute_score(meta_cols_instances_fn, base_de_donnees)
 
 
@@ -696,6 +702,7 @@ class SemanticInferenceView(APIView):
                     nlp = NLP_FR if langue == 'fr' else NLP_EN
                     doc = nlp(texte)
                     for ent in doc.ents:
+                        print(ent.label_)
                         entites_par_colonne[col][ent.label_] += 1
 
 

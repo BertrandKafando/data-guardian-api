@@ -44,27 +44,19 @@ class DataguardianappConfig(AppConfig):
                     config_data = json.load(f)
 
 
-            for category, constraints in config_data["generales"].items():
-                for constraint_name, anomaly_list in constraints.items():
-                    for anomaly in anomaly_list:
+            for type in config_data.items():
+                print(type[0])
+                print(type[1]['type'])
+                print(type[1]['definition'])
+                for anomaly in type[1]['anomalies']:
+                    print(anomaly)
 
-                        MetaTousContraintes.objects.get_or_create(
-                            nom_contrainte=anomaly["nom"],
-                            category=category,
-                            contrainte=anomaly["regex"],
-                            commentaire=anomaly["commentaire"]
-                        )
-
-
-            for field_name, field_info in config_data["specifiques"].items():
-                for anomaly in field_info["anomalies"]:
-
-                    MetaTousContraintes.objects.get_or_create(
-                        nom_contrainte=anomaly["nom"],
-                        category=field_name,
-                        contrainte=anomaly["regex"],
-                        commentaire=anomaly["commentaire"]
-                    )
+                    # MetaTousContraintes.objects.get_or_create(
+                    #     nom_contrainte=anomaly["nom"],
+                    #     category=field_name,
+                    #     contrainte=anomaly["regex"],
+                    #     commentaire=anomaly["commentaire"]
+                    # )
 
 
 
