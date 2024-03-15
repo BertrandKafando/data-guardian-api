@@ -66,23 +66,31 @@ class DBFunctions:
                 return -1
 
     def insert_dataframe_into_postgresql_table(dataframe, table_name):
-        
+        if not isinstance(dataframe, pd.DataFrame):
+            print("The provided 'dataframe' argument is not a pandas DataFrame")
+            return -1
+
+        # Générer les clés primaires en utilisant les indices du DataFrame comme valeurs entières
+        dataframe[f"{table_name}_id"] = dataframe.index + 1  # +1 pour commencer l'indexation à 1 au lieu de 0
+        # Déplacer la colonne de clé primaire au début du DataFrame
+        cols = dataframe.columns.tolist()
+        cols = cols[-1:] + cols[:-1]
+        dataframe = dataframe[cols]
+
         try:
             with connection.cursor() as cursor:
                 dtype_mapping = {col: DBFunctions.map_numpy_type_to_sql(str(dataframe[col].dtype)) for col in dataframe.columns}
-                columns = ', '.join( [f"{DBFunctions.clean_column_name(header)} {dtype_mapping[header]}" for header in dataframe.columns])
-                #columns = columns = ", ".join([f"{DBFunctions.clean_column_name(header)} VARCHAR(255)" for header in headers])
-                cursor.execute(
-                    f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});")
+                columns = ', '.join([f"{DBFunctions.clean_column_name(header)} {dtype_mapping[header]}" for header in dataframe.columns])
+                create_table_query = f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});"
+                cursor.execute(create_table_query)
 
                 # Disable constraint checks temporarily
                 with connection.constraint_checks_disabled():
-                    for i in range(0, len(dataframe)):
+                    for i in range(len(dataframe)):
                         row = list(dataframe.iloc[i, :])
-                        row = [val.item() if isinstance(val, np.generic)
-                               else val for val in row]
+                        row = [val.item() if isinstance(val, np.generic) else val for val in row]
                         placeholders = ", ".join(["%s"] * len(row))
-                        insert_query = f"INSERT INTO {table_name} VALUES ({placeholders});"
+                        insert_query = f"INSERT INTO {table_name} ({', '.join([DBFunctions.clean_column_name(col) for col in dataframe.columns])}) VALUES ({placeholders});"
                         cursor.execute(insert_query, row)
 
             return 0
@@ -90,6 +98,7 @@ class DBFunctions:
         except Exception as e:
             print(f"Error inserting data into the table {table_name}: {e}")
             return -1
+
         
 
     def map_numpy_type_to_sql(dtype):
@@ -412,7 +421,7 @@ class DataSplitInsertionFromFileFunctions:
                 # If unable to convert to numeric or datetime, keep as object
                 res[header] = column_series
 
-            return pd.DataFrame(res), headers
+            return pd.DataFrame(res)
 
         except Exception as e:
             print(f"Error parsing file : {e}")
@@ -529,7 +538,7 @@ class DataInsertionStep:
         # TODO : 1FN
        # data = DataSplitInsertionFromFileFunctions.verify1FN(data)
 
-        return DBFunctions.insert_dataframe_into_postgresql_table(data, headers, db_name), data, db_name
+        return DBFunctions.insert_dataframe_into_postgresql_table(data, db_name), data, db_name
     
     
     def separateur (separateur) : 
