@@ -66,17 +66,6 @@ class DBFunctions:
                 return -1
 
     def insert_dataframe_into_postgresql_table(dataframe, table_name):
-        if not isinstance(dataframe, pd.DataFrame):
-            print("The provided 'dataframe' argument is not a pandas DataFrame")
-            return -1
-
-        # Générer les clés primaires en utilisant les indices du DataFrame comme valeurs entières
-        dataframe[f"{table_name}_id"] = dataframe.index + 1  # +1 pour commencer l'indexation à 1 au lieu de 0
-        # Déplacer la colonne de clé primaire au début du DataFrame
-        cols = dataframe.columns.tolist()
-        cols = cols[-1:] + cols[:-1]
-        dataframe = dataframe[cols]
-
         try:
             with connection.cursor() as cursor:
                 dtype_mapping = {col: DBFunctions.map_numpy_type_to_sql(str(dataframe[col].dtype)) for col in dataframe.columns}
@@ -240,31 +229,25 @@ class DBFunctions:
         return new_columns_instance
     
 
-    def check_outliers(columns, nom_bd) : 
+    def check_outliers(columns, nom_bd,connected_user,df) : 
 
         new_columns_instance = list()
-
+        #supprimer la colonne avec le nom_bd+ _id
+        columns = [col for col in columns if col.nom_colonne != f"{nom_bd}_id"]
         for col_instance in columns :
 
             result_type_col = DBFunctions.executer_fonction_postgresql('TypeDesColonne',str(nom_bd).lower(), str(col_instance.nom_colonne).lower())
+            col_instance.nombre_outliers = 0
+            if result_type_col[0] in DataGuardianDiagnostic.types_numeriques:
+                id_col_name= str(nom_bd).lower() + "_id"
+                print("working on ",col_instance.nom_colonne, id_col_name)
+                res =DataGuardianDiagnostic.chechk_column_outliers_python(df, str(col_instance.nom_colonne), id_col_name)
+                print("outliers",res)
+                result_outliers = len(res)
+                col_instance.nombre_outliers = result_outliers
 
-            if result_type_col[0] == 'integer' :
-
-                result_outliers = DBFunctions.executer_fonction_postgresql('count_outliers', str(nom_bd).lower(), str(col_instance.nom_colonne).lower(), 1.5)
-
-                col_instance.nombre_outliers = 0
-
-                if isinstance(result_outliers, tuple)  :
-                    if result_outliers[0] > 0 :
-                        col_instance.nombre_outliers = result_outliers[0]
-
-                col_instance.save()
-                new_columns_instance.append(col_instance)
-
-            else :
-                col_instance.nombre_outliers = 0
-                col_instance.save()
-                new_columns_instance.append(col_instance)
+            col_instance.save()
+            new_columns_instance.append(col_instance)
 
         return new_columns_instance
 
@@ -349,7 +332,7 @@ class DBFunctions:
        
 
     # Fonction pour nettoyer les noms de colonnes
-    def clean_column_name(name):  
+    def clean_column_name(name):
         new_name = name.strip() 
         res = re.sub(r'[^0-9a-zA-Z_]', '_', new_name)
         res.replace('', '_')
@@ -429,7 +412,6 @@ class DataSplitInsertionFromFileFunctions:
 
 
         
-    
     def upload_file_to_dataframe_json(file, sep):
         try:
             df = pd.read_json(file, sep,)
@@ -439,7 +421,6 @@ class DataSplitInsertionFromFileFunctions:
             return -1
         
     
-
    
 
     def upload_file_to_dataframe_excel(file, header, sep):
@@ -537,8 +518,21 @@ class DataInsertionStep:
 
         # TODO : 1FN
        # data = DataSplitInsertionFromFileFunctions.verify1FN(data)
+        
+       # update dataframe
+        dataframe = pd.DataFrame(data)
+        if not isinstance(dataframe, pd.DataFrame):
+            print("The provided 'dataframe' argument is not a pandas DataFrame")
+            return -1, None, None
 
-        return DBFunctions.insert_dataframe_into_postgresql_table(data, db_name), data, db_name
+        # Générer les clés primaires en utilisant les indices du DataFrame comme valeurs entières
+        dataframe[f"{table_name}_id"] = dataframe.index + 1  # +1 pour commencer l'indexation à 1 au lieu de 0
+        # Déplacer la colonne de clé primaire au début du DataFrame
+        cols = dataframe.columns.tolist()
+        cols = cols[-1:] + cols[:-1]
+        dataframe = dataframe[cols]
+
+        return DBFunctions.insert_dataframe_into_postgresql_table(dataframe, db_name), dataframe, db_name
     
     
     def separateur (separateur) : 
@@ -550,3 +544,66 @@ class DataInsertionStep:
             return "\t"
         else : 
             return ","
+
+
+
+class DataGuardianDiagnostic :
+        # Liste des types de données considérés comme numériques
+    types_numeriques = ['smallint', 'integer', 'bigint', 'decimal', 'numeric', 'real', 'double precision', 'smallserial', 'serial', 'bigserial']
+
+
+    def generate_view_name(user, table_name, col_name):
+        # concatenate the user id, table name and column name + timer(miliseconde) to generate a unique view name
+        name= f"v_outliers_{int(datetime.datetime.now().timestamp() * 1000)}"
+        #enleve les caracteres speciaux
+        name = re.sub(r'[^a-zA-Z0-9]', '_', name)
+        return name
+    
+    def execute_postgresql_and_create_view(fonction,user,table_name, col_name) :
+        # generate the view name
+        view_name = DataGuardianDiagnostic.generate_view_name(user, table_name, col_name)
+        # execute the function usind execute_postgresql_function
+        result = DBFunctions.executer_fonction_postgresql('creer_vue_dynamique',view_name,fonction)
+        print(result)
+        return result
+    
+    def count_value_in_view(view_name) :
+        if view_name and view_name[0]:
+            try:
+                    with connection.cursor() as cursor:
+                        cursor.execute(f"SELECT COUNT(*) FROM {view_name[0]};")
+                        nombre_elements = cursor.fetchone()
+                        return nombre_elements
+            except Exception as e:
+                print(f"Erreur lors du comptage des éléments dans la vue {view_name[0]}: {e}")
+                return -1
+        else:
+            print("La vue n'existe pas")
+            return -1
+        
+    def check_column_outliers(df, col_name, id_col_name):
+        """
+        Identify outliers in a DataFrame column based on the Interquartile Range (IQR) method.
+        Returns the id_col_name and col_name values of the outliers.
+        """
+        col_value = df[col_name].values
+        id_col_value = df[id_col_name].values
+
+        Q1 = np.percentile(col_value, 25)
+        Q3 = np.percentile(col_value, 75)
+        IQR = Q3 - Q1
+
+        # Define bounds for outliers
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+
+        outliers = []
+        zip_iterator = zip(col_value, id_col_value)
+
+        for col, id_col in zip_iterator:
+            if col < lower_bound or col > upper_bound:
+                outliers.append((id_col, col))
+
+        return outliers
+
+

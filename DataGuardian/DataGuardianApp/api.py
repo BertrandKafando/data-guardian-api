@@ -288,6 +288,8 @@ class DiagnosticViewSet(APIView):
 
         diagnostic_data = DBFunctions.extract_nested_data(request)
 
+        connected_user = request.user
+
         base_de_donnees_data = diagnostic_data.pop('base_de_donnees', None)
 
         if base_de_donnees_data :
@@ -389,7 +391,8 @@ class DiagnosticViewSet(APIView):
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
-                    meta_cols_outliers = DBFunctions.check_outliers(meta_cols_instances_fn, nom_bd)
+                    #bertrand
+                    meta_cols_outliers = DBFunctions.check_outliers(meta_cols_instances_fn, nom_bd,connected_user,df)
 
                     meta_cols_repetitions = DBFunctions.check_cols_repetitions(meta_cols_outliers, nom_bd)
 
@@ -733,3 +736,31 @@ class SemanticInferenceView(APIView):
 
         return Response({'result':type_dominant_par_colonne}, status=status.HTTP_200_OK)
     
+
+
+#bertrand
+    
+    
+class DiagnosticDetailViewSet(ModelViewSet):
+    serializer_class= DiagnosticDetailSerializer
+
+    # def get_permissions(self):
+    #     if self.request.method == "GET":
+    #         self.permission_classes = [IsCustomerAuthenticated]
+    #     elif self.request.method == "POST":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "PUT" or self.request.method == "PATCH":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "DELETE":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     return [permission() for permission in self.permission_classes]
+
+    def get_queryset(self):
+        
+        diagnostic_id = self.request.query_params.get('diagnostic_id')
+
+        if diagnostic_id:
+            queryset = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id)
+        else:
+            queryset = DiagnosticDetail.objects.all()
+        return queryset

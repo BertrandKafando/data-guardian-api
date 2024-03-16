@@ -20,6 +20,7 @@ router.register(r'meta-tous-contraintes', MetaTousContraintesViewSet, basename='
 router.register(r'meta-colonne', MetaColonneViewSet, basename='Meta-colonne')
 router.register(r'score-diagnostic', ScoreDiagnosticViewSet, basename='score-diagnostic')
 router.register(r'projet', ProjetViewSet, basename='projet')
+router.register(r'diagnostic-detail', DiagnosticDetailViewSet, basename='diagnostic-detail')
 
 
 schema_view = get_schema_view(

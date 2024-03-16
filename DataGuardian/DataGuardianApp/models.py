@@ -201,6 +201,23 @@ class Diagnostic(models.Model):
 
     __repr__=__str__
 
+class DiagnosticDetail(models.Model):
+    diagnotic = models.ForeignKey(Diagnostic,related_name="diagnostic_detail", on_delete=models.CASCADE, null=False, blank=False)
+    id_ligne = models.IntegerField(null=True, blank=True)
+    nom_colonne = models.CharField(max_length=100)
+    valeur = models.CharField(max_length=100)
+    anomalie = models.CharField(max_length=100, null=True, blank=True)
+    commentaire = models.CharField(max_length=100, null=True, blank=True)
+    code_correction = models.CharField(max_length=100, null=True, blank=True)
+
+    def __str__(self):
+        return str(self.nom_colonne)
+    
+    __repr__=__str__
+
+
+    
+
 
 class MetaTable(models.Model):
 
