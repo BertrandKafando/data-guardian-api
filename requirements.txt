@@ -14,3 +14,4 @@ openpyxl
 google-cloud-translate
 pycountry
 geonamescache
+currency-symbols
