@@ -285,6 +285,8 @@ class DiagnosticViewSet(APIView):
 
         diagnostic_data = DBFunctions.extract_nested_data(request)
 
+        connected_user = request.user
+
         base_de_donnees_data = diagnostic_data.pop('base_de_donnees', None)
 
         if base_de_donnees_data :
@@ -392,7 +394,8 @@ class DiagnosticViewSet(APIView):
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
-                    meta_cols_outliers = DBFunctions.check_outliers(meta_cols_instances_fn, nom_bd)
+                    #bertrand
+                    meta_cols_outliers = DBFunctions.check_outliers(meta_cols_instances_fn, nom_bd,connected_user,df)
 
                     meta_cols_repetitions = DBFunctions.check_cols_repetitions(meta_cols_outliers, nom_bd)
 
@@ -638,3 +641,121 @@ class ProjetViewSet(ModelViewSet):
 
         return queryset
 
+    http_method_names = ["head","post"]
+
+    def determine_type_by_regex(texte, regex_patterns):
+        for type_entite, pattern in regex_patterns.items():
+            if re.search(pattern, texte, re.IGNORECASE):
+                return type_entite
+        return None
+    
+
+    def post(self, request, *args, **kwargs):
+
+
+        engine = create_engine(f'postgresql://{env("POSTGRES_USER")}:{env("POSTGRES_PASSWORD")}/{env("POSTGRES_DB")}')
+        conn = engine.connect()
+
+        # Définition des expressions régulières
+        regex_patterns = {
+            'EMAIL': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+            'PHONE': r'\b\d{10}\b',
+            'DATE': r'\b\d{1,2}/\d{1,2}/\d{4}\b|\b\d{4}-\d{1,2}-\d{1,2}\b|\b\d{1,2} (Janvier|Février|Mars|Avril|Mai|Juin|Juillet|Août|Septembre|Octobre|Novembre|Décembre) \d{4}\b',
+            'ADDRESS': r'\b(?:Rue|Avenue|Boulevard|Place|Allée|Chemin|Voie|Quai|Square|Impasse)\s[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b',
+            'CODE POSTALE': r'\b\d{4,5}\b',
+            'GENRE': r'\b(Femme|F|femme|f|Homme|H|homme|h|M|Mâle|male|Femelle|femelle|Unspecified|unspecified|Non-binary|non-binary|NB|nb)\b'
+        }
+
+        df = pd.read_sql_query(con=conn, sql=sql_text("SELECT * FROM CLIENTS"))
+
+        # Compteur pour chaque type d'entité par colonne
+        entites_par_colonne = {col: Counter() for col in df.columns}
+
+        # Analyse des colonnes
+        for col in df.columns:
+            for item in df[col].dropna():
+                texte = str(item).strip()
+                if texte:
+
+                    # Vérifier avec les regex
+                    regex_type = SemanticInferenceView.determine_type_by_regex(texte, regex_patterns)
+                    if regex_type:
+                        entites_par_colonne[col][regex_type] += 1
+                        continue
+
+                    # Sinon, utiliser l'analyse NER
+                    try:
+                        langue = detect(texte) 
+                        if langue != 'fr' and langue != 'en' :
+                            langue = 'fr'
+                    except LangDetectException:
+                        langue = 'en'  
+
+                    nlp = NLP_FR if langue == 'fr' else NLP_EN
+                    doc = nlp(texte)
+                    for ent in doc.ents:
+                        entites_par_colonne[col][ent.label_] += 1
+
+
+        # Dictionary to map SpaCy labels to more descriptive names
+        label_map = {
+            "PER": ["CIVILITE", "NOM", "PRENOM"],
+            "NORP": "GROUPE",
+            "FAC": "INFRASTRUCTURE",
+            "ORG": "ORGANISATION",
+            "GPE": "ADRESSE",
+            "LOC": "ADRESSE",
+            "PRODUCT": "PRODUIT",
+            "EVENT": "EVENEMENT",
+            "WORK_OF_ART": "TITRE",
+            "LAW": "LOI",
+            "LANGUAGE": "LANGAGE",
+            "DATE": "DATE",
+            "TIME": "TEMPS",
+            "PERCENT": "POURCENTAGE",
+            "MONEY": "ARGENT",
+            "QUANTITY": "QUANTITE",
+            "ORDINAL": ["NIVEAU", "RANG", "CLASSE"],
+            "CARDINAL": "NUMERIQUE"
+        }
+
+        type_dominant_par_colonne = {col: entites.most_common(1)[0][0] if entites else 'Aucun' for col, entites in entites_par_colonne.items()}
+
+        # Function to map labels
+        def map_labels(data, label_map):
+            for key, value in data.items():
+                data[key] = label_map.get(value, value)
+
+        # Map the labels
+        map_labels(type_dominant_par_colonne , label_map)
+
+        return Response({'result':type_dominant_par_colonne}, status=status.HTTP_200_OK)
+    
+
+
+#bertrand
+    
+    
+class DiagnosticDetailViewSet(ModelViewSet):
+    serializer_class= DiagnosticDetailSerializer
+
+    # def get_permissions(self):
+    #     if self.request.method == "GET":
+    #         self.permission_classes = [IsCustomerAuthenticated]
+    #     elif self.request.method == "POST":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "PUT" or self.request.method == "PATCH":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "DELETE":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     return [permission() for permission in self.permission_classes]
+
+    def get_queryset(self):
+        
+        diagnostic_id = self.request.query_params.get('diagnostic_id')
+
+        if diagnostic_id:
+            queryset = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id)
+        else:
+            queryset = DiagnosticDetail.objects.all()
+        return queryset
