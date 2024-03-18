@@ -1491,7 +1491,6 @@ DECLARE
 BEGIN
 
     column_type := TypeDesColonne(NOMTAB, Nom_COL);
-    RAISE NOTICE column_type;
     IF column_type NOT IN ('integer', 'bigint', 'numeric', 'real', 'double precision') THEN
         RETURN -1; 
     END IF;

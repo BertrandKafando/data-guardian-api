@@ -1,9 +1,8 @@
 from django.db import models
 from django.conf import settings
-from django.core.validators import MaxValueValidator, MinValueValidator, FileExtensionValidator, RegexValidator
+from django.core.validators import FileExtensionValidator, RegexValidator
 from django.utils.timezone import now
 from django.contrib.auth.hashers import make_password
-import os
 import datetime
 from django.utils import timezone
 
@@ -103,7 +102,6 @@ class Projet(models.Model):
     __repr__ = __str__
 
 
-   
 class BaseDeDonnees(models.Model):
 
     SQL = 'SQL'
@@ -226,6 +224,8 @@ class MetaTable(models.Model):
     date_creation = models.DateTimeField(auto_now_add=True)
     nombre_colonnes = models.IntegerField(null=True, blank=True)
     nombre_lignes = models.IntegerField(null=True, blank=True)
+    nombre_doublons = models.IntegerField(null=True, blank=True)
+    nombre_similaires = models.IntegerField(null=True, blank=True)
     commentaire = models.TextField(null=True, blank=True)
 
     def __str__(self):

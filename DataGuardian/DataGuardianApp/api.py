@@ -10,7 +10,7 @@ from .authentication import *
 from django.contrib.auth import logout
 from .utils import Base64, DBFunctions, DataInsertionStep
 import os
-from .utils import Base64, DBFunctions
+from .utils import Base64, DBFunctions, DBTypesDetection
 import os
 import datetime
 from django.core.files.base import ContentFile
@@ -22,7 +22,6 @@ import json
 from django.db import transaction
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from sqlalchemy import create_engine, text as sql_text
 from langdetect import detect, LangDetectException
 from collections import Counter
 import re
@@ -32,8 +31,6 @@ import pandas as pd
 env = environ.Env()
 environ.Env.read_env()
 BASE_DIR = settings.BASE_DIR
-NLP_FR = settings.NLP_FR
-NLP_EN = settings.NLP_EN
 
 
 class RoleViewSet(ModelViewSet):
@@ -380,6 +377,12 @@ class DiagnosticViewSet(APIView):
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
+                    attributsCles = ', '.join(df.columns)
+
+                    DBFunctions.count_doublons(meta_table, nom_bd, attributsCles)
+
+                    # TODO COUNT SIMILAIRE
+
                     DBFunctions.compute_score(meta_cols_instances_fn, base_de_donnees)
 
 
@@ -610,7 +613,6 @@ class LogoutView(APIView):
         return Response({'detail':'utilisateur deconnecté'},status=status.HTTP_200_OK)
 
 
-
 class ProjetViewSet(ModelViewSet):
     serializer_class= ProjetSerializer
 
@@ -625,9 +627,6 @@ class ProjetViewSet(ModelViewSet):
     #         self.permission_classes= [IsCustomerAuthenticated ]
     #     return [permission() for permission in self.permission_classes]
 
-    # nlp_fr = spacy.load("fr_core_news_md")
-    # nlp_en = spacy.load("en_core_web_md")
-
     def get_queryset(self):
 
         user = self.request.user
@@ -641,10 +640,6 @@ class ProjetViewSet(ModelViewSet):
             queryset = Projet.objects.all()
 
         return queryset
-    
-    
-
-class SemanticInferenceView(APIView):
 
     http_method_names = ["head","post"]
 
