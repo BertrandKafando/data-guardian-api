@@ -14,30 +14,39 @@
             "type": "string",
             "definition": "[[:punct:]]$",
             "commentaire": "Pour detecter des caracteres speciaux"
+        },
+        "specifiques":{
+            "EMAIL" : {
+                "nom contrainte" : "caracteres speciaux sur email",
+                "type": "email",
+                "definition": "[^a-zA-Z0-9_@.]",
+                "commentaire": "Pour detecter des caracteres speciaux dans les emails en excluant l'arobase et le point"
+            }
         }
+
     },
-    "specifiques" : {
-        "EMAIL": {
+    "semantiques" : {
+        "TYPE_EMAIL": {
             "type": "string",
             "definition": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}$",
             "commentaire": "Pour detecter des emails"
         },
-        "TELEPHONE": {
+        "TYPE_TELEPHONE": {
             "type": "string",
             "definition": "^\\+?[0-9.\\s-]{10,20}$",
             "commentaire": "Pour detecter des numeros de telephone"
         },
-        "NUMERIQUE": {
+        "TYPE_NUMERIQUE": {
             "type": "numerique",
             "definition": "^-?\\d*\\.?\\d+$",
             "commentaire": "Pour detecter des donnees numeriques"
         },
-        "DATE": {
+        "TYPE_DATE": {
             "type": "date",
             "definition": "^(?:(\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])|((0[1-9]|1[0-2]))-(0[1-9]|[12]\\d|3[01])-(\\d{4})|(0[1-9]|[12]\\d)\/(0[1-9]|1[0-2])\/(\\d{2}|\\d{4})|\\d{2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\\d{2}|\\d{4}))$",
             "commentaire": "Pour detecter les dates"
         },
-        "ADRESSE": {
+        "TYPE_ADRESSE": {
             "type": "string",
             "definition": "\b(rue|avenue|boulevard|place|chemin|allée|voie|impasse|square|route|bvd|av|rd)\b",
             "commentaire": "Pour detecter une adresse"

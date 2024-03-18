@@ -46,15 +46,28 @@ class DataguardianappConfig(AppConfig):
 
             for field_name, field_info in config_data["generales"].items():
 
-                MetaTousContraintes.objects.get_or_create(
-                    nom_contrainte=field_name,
-                    category=field_info['type'],
-                    contrainte=field_info['definition'],
-                    commentaire=field_info['commentaire']
-                )
+                if field_name == 'specifiques':
+                    for type, constraints in field_info.items() :
+
+                        MetaTousContraintes.objects.get_or_create(
+                            nom_contrainte=constraints['nom contrainte'],
+                            category=type,
+                            contrainte=constraints['definition'],
+                            commentaire=constraints['commentaire']
+                        )
+                
+
+                if 'type' in field_info :
+
+                    MetaTousContraintes.objects.get_or_create(
+                        nom_contrainte=field_name,
+                        category=field_info['type'],
+                        contrainte=field_info['definition'],
+                        commentaire=field_info['commentaire']
+                    )
 
 
-            for field_name, field_info in config_data["specifiques"].items():
+            for field_name, field_info in config_data["semantiques"].items():
 
                 MetaTousContraintes.objects.get_or_create(
                     nom_contrainte=field_info['type'],

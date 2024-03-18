@@ -695,7 +695,7 @@ class DBTypesDetection :
     def is_address(chaine):
 
         address_meta = MetaTousContraintes.objects.filter(
-            category = 'ADRESSE'
+            category = 'TYPE_ADRESSE'
         ).first()
 
         regex = address_meta.contrainte
@@ -712,7 +712,7 @@ class DBTypesDetection :
     def is_email(chaine):
 
         email_meta = MetaTousContraintes.objects.filter(
-            category = 'EMAIL'
+            category = 'TYPE_EMAIL'
         ).first()
 
         regex = email_meta.contrainte
@@ -732,7 +732,7 @@ class DBTypesDetection :
     def is_phone_number(chaine):
 
         phone_meta = MetaTousContraintes.objects.filter(
-            category = 'TELEPHONE'
+            category = 'TYPE_TELEPHONE'
         ).first()
 
         regex = phone_meta.contrainte
@@ -752,7 +752,7 @@ class DBTypesDetection :
     def is_numeric(chaine):
 
         numeric_meta = MetaTousContraintes.objects.filter(
-            category = 'NUMERIQUE'
+            category = 'TYPE_NUMERIQUE'
         ).first()
 
         regex = numeric_meta.contrainte
@@ -772,7 +772,7 @@ class DBTypesDetection :
     def is_date(chaine):
 
         date_meta = MetaTousContraintes.objects.filter(
-            category = 'DATE'
+            category = 'TYPE_DATE'
         ).first()
 
         regex = date_meta.contrainte
