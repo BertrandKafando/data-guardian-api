@@ -1,77 +1,47 @@
 {
-    "EMAIL": {
-        "type": "string",
-        "definition": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}$",
-        "anomalies" : [
-            {
-                "nom": "Pas en minuscule",
-                "regex": "^[^a-z]*$",
-                "commentaire": "pour verifier si l'email n'est pas en minuscule"
-            },
-            {
-                "nom": "Absence d'arobase",
-                "regex": "^[^@]*$",
-                "commentaire": "pour verifier s'il n'y a pas d'arobase dans l'adresse email"
-            }
-        ]
-    },
-    "TELEPHONE": {
-        "type": "string",
-        "definition": "^\\+?[0-9.\\s-]{10,20}$",
-        "anomalies" : [
-            {
-                "nom": "Caracteres non numerique",
-                "regex": "^\\d+$",
-                "commentaire": "pour verifier si numero contient des contients des caracteres non numerique"
-            }
-            ]
+    "generales" : {
+        "Espaces superflus": {
+            "type": "string",
+            "definition": "^( ){2,}$",
+            "commentaire": "pour rechercher des espaces superflus"
         },
-    "TEXTE" : {
-        "type": "string",
-        "definition": "^\\w+$",
-        "anomalies" : [
-            {
-                "nom": "Espaces superflus",
-                "regex": "( ){2,}",
-                "commentaire": "pour rechercher des espaces superflus"
-            },
-            {
-                "nom": "Repetions de trois lettres consecutives",
-                "regex": "(.)\\1\\1",
-                "commentaire": "pour rechercher des espaces superflus"
-            },
-            {
-                "nom": "caractere speciaux",
-                "regex" : "[[:punct:]]",
-                "commentaire": "pour rechercher des espaces superflus"
-            }
-            ]
+        "Repetitions de trois lettres consecutives": {
+            "type": "string",
+            "definition": "^(.)\\1\\1$",
+            "commentaire": "Repetitions de trois lettres consecutives"
+        },
+        "Caracteres speciaux": {
+            "type": "string",
+            "definition": "[[:punct:]]$",
+            "commentaire": "Pour detecter des caracteres speciaux"
+        }
     },
-    "NUMERIQUE": {
-        "type": "numérique",
-        "definition": "^-?\\d*\\.?\\d+$",
-        "anomalies": [
-            {
-                "nom": "Format incorrect",
-                "regex": "(?!^-?\\d*\\.?\\d+$)^.*$",
-                "commentaire": "Détecte les nombres contenant des caractères non numériques ou ayant plusieurs signes moins/points décimaux."
-            },
-            {
-                "nom": "Séparateur décimal inattendu",
-                "regex": ",",
-                "commentaire": "Détecte les nombres utilisant une virgule comme séparateur décimal dans un contexte où un point est attendu."
-            },
-            {
-                "nom": "Espaces inattendus",
-                "regex": "\\s",
-                "commentaire": "Détecte la présence d'espaces dans les nombres, indiquant potentiellement une erreur de formatage."
-            }
-        ]
-    },
-    "DATE": {
-        "type": "date",
-        "definition": "^(?:(\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])|((0[1-9]|1[0-2]))-(0[1-9]|[12]\\d|3[01])-(\\d{4})|(0[1-9]|[12]\\d)/(0[1-9]|1[0-2])\/(\\d{4})|\\d{2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \\d{4})$",
-        "anomalies": []
+    "specifiques" : {
+        "EMAIL": {
+            "type": "string",
+            "definition": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}$",
+            "commentaire": "Pour detecter des emails"
+        },
+        "TELEPHONE": {
+            "type": "string",
+            "definition": "^\\+?[0-9.\\s-]{10,20}$",
+            "commentaire": "Pour detecter des numeros de telephone"
+        },
+        "NUMERIQUE": {
+            "type": "numerique",
+            "definition": "^-?\\d*\\.?\\d+$",
+            "commentaire": "Pour detecter des donnees numeriques"
+        },
+        "DATE": {
+            "type": "date",
+            "definition": "^(?:(\\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\\d|3[01])|((0[1-9]|1[0-2]))-(0[1-9]|[12]\\d|3[01])-(\\d{4})|(0[1-9]|[12]\\d)\/(0[1-9]|1[0-2])\/(\\d{2}|\\d{4})|\\d{2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\\d{2}|\\d{4}))$",
+            "commentaire": "Pour detecter les dates"
+        },
+        "ADRESSE": {
+            "type": "string",
+            "definition": "\b(rue|avenue|boulevard|place|chemin|allée|voie|impasse|square|route|bvd|av|rd)\b",
+            "commentaire": "Pour detecter une adresse"
+        }
     }
   }
   

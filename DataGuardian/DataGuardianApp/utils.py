@@ -5,10 +5,17 @@ import threading
 from django.http import QueryDict
 from psycopg2.extras import execute_values
 import re
+import os
 import numpy as np
 import pandas as pd
 import datetime
 from .models import *
+import pycountry
+import requests
+import geonamescache
+from google.cloud import translate
+
+
 class EmailThread(threading.Thread):
 
     def __init__(self, email):
@@ -64,6 +71,7 @@ class DBFunctions:
 
                 print(f"Erreur lors de l'exécution de la fonction {nom_fonction}: {e}")
                 return -1
+
 
     def insert_dataframe_into_postgresql_table(dataframe, table_name):
         if not isinstance(dataframe, pd.DataFrame):
@@ -470,11 +478,6 @@ class DataSplitInsertionFromFileFunctions:
             return None
     
     
-
-
-
-       
-    
     def verify1FN(dataframe):
         # Check if there are any duplicate columns
         if len(set(dataframe.columns)) != len(dataframe.columns):
@@ -486,11 +489,9 @@ class DataSplitInsertionFromFileFunctions:
         return dataframe
     
 
-
     # Fonction pour compter le nombre moyen de mots dans une colonne
     def average_word_count(series):
         return series.str.split(' ').str.len().mean()
-
 
 
     def process_data(df):
@@ -521,8 +522,6 @@ class DataSplitInsertionFromFileFunctions:
                         
         return df
 
-
-       
 class DataInsertionStep:
 
     def data_insertion(chemin_fichier, sep, header=True, table_name='', type_file='CSV'):
@@ -563,3 +562,294 @@ class DataInsertionStep:
             return "\t"
         else : 
             return ","
+
+
+
+
+
+class DBTypesDetection :
+
+    BASE_DIR = settings.BASE_DIR
+    gc = geonamescache.GeonamesCache()
+    credential_path = os.path.join(BASE_DIR, 'DataGuardian/DataGuardianApp/db_configs/even-envoy-415900-c08ec858fa9b.json')
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credential_path
+    PARENT = f"projects/even-envoy-415900"
+
+
+    def check_text_spelling(text):
+        api_url = "https://api.languagetoolplus.com/v2/check"
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        data = {
+            "text": text,
+            "language": "fr",
+        }
+        
+        response = requests.post(api_url, headers=headers, data=data)
+        result = response.json()
+
+        return result
+
+
+    def verifier_format(chaine):
+
+        patterns = [
+            r'^[a-zA-Z0-9áàâäãåçéèêëíìîïñóòôöõúùûüýÿæœÁÀÂÄÃÅÇÉÈÊËÍÌÎÏÑÓÒÔÖÕÚÙÛÜÝŸÆŒ\s]+$',
+            r'^[a-zA-Z0-9áàâäãåçéèêëíìîïñóòôöõúùûüýÿæœÁÀÂÄÃÅÇÉÈÊËÍÌÎÏÑÓÒÔÖÕÚÙÛÜÝŸÆŒ\s,]+$',
+            r'^[a-zA-Z0-9áàâäãåçéèêëíìîïñóòôöõúùûüýÿæœÁÀÂÄÃÅÇÉÈÊËÍÌÎÏÑÓÒÔÖÕÚÙÛÜÝŸÆŒ,]+$',
+            r'^[a-zA-Z0-9áàâäãåçéèêëíìîïñóòôöõúùûüýÿæœÁÀÂÄÃÅÇÉÈÊËÍÌÎÏÑÓÒÔÖÕÚÙÛÜÝŸÆŒ\s,\-]+$',
+            r'^[a-zA-Z0-9áàâäãåçéèêëíìîïñóòôöõúùûüýÿæœÁÀÂÄÃÅÇÉÈÊËÍÌÎÏÑÓÒÔÖÕÚÙÛÜÝŸÆŒ\s-]+$',
+            r'^[a-zA-Z0-9áàâäãåçéèêëíìîïñóòôöõúùûüýÿæœÁÀÂÄÃÅÇÉÈÊËÍÌÎÏÑÓÒÔÖÕÚÙÛÜÝŸÆŒ,-]+$',
+        ]
+    
+        for pattern in patterns:
+            if re.match(pattern, chaine):
+                return True
+
+        return False
+
+
+    def decouper_chaine(chaine):
+        
+        separateurs = [' ', ',', '-']
+        mots = []
+
+        if DBTypesDetection.verifier_format(chaine):
+            mots = re.split(r'[, \-]+', chaine)
+            return mots
+
+        else:
+            return None
+
+
+    def translate_text(text: str, target_language_code: str) -> translate.Translation:
+        client = translate.TranslationServiceClient()
+        
+        if text and isinstance(text, str) :
+
+            response = client.translate_text(
+                parent = DBTypesDetection.PARENT,
+                contents = [str(text)],
+                target_language_code = target_language_code,
+            )
+
+            return response.translations[0]
+        else :
+
+            response = client.translate_text(
+                parent = DBTypesDetection.PARENT,
+                contents = ['None'],
+                target_language_code = target_language_code,
+            )
+
+            return response.translations[0]
+
+        
+    def is_country(country_name):
+
+        if isinstance(country_name, str):
+            country_name = DBTypesDetection.translate_text(country_name, "en").translated_text
+            try:
+                pycountry.countries.lookup(country_name)
+                return True
+            except LookupError:
+                return False
+        else :
+            False
+
+
+    def is_city(chaine):
+        
+        if isinstance(chaine, str) :
+            villes = DBTypesDetection.gc.get_cities()
+
+            for ville_id in villes:
+                ville = villes[ville_id]
+                if chaine.lower() == ville['name'].lower():
+                    return True
+
+            return False
+        else : 
+            False
+
+
+    def is_address(chaine):
+
+        address_meta = MetaTousContraintes.objects.filter(
+            category = 'ADRESSE'
+        ).first()
+
+        regex = address_meta.contrainte
+
+        if isinstance(chaine, str):
+            regex = re.compile(
+                regex,
+                re.IGNORECASE)      
+            return bool(regex.search(chaine))
+        else :
+            return False
+        
+
+    def is_email(chaine):
+
+        email_meta = MetaTousContraintes.objects.filter(
+            category = 'EMAIL'
+        ).first()
+
+        regex = email_meta.contrainte
+        compiled_regex = re.compile(regex)
+
+        if isinstance(chaine, str):
+
+            if compiled_regex.match(chaine) :
+                return True
+            else :
+                return False
+        
+        else :
+            return False
+        
+
+    def is_phone_number(chaine):
+
+        phone_meta = MetaTousContraintes.objects.filter(
+            category = 'TELEPHONE'
+        ).first()
+
+        regex = phone_meta.contrainte
+        compiled_regex = re.compile(regex)
+
+        if isinstance(chaine, str):
+
+            if compiled_regex.match(chaine) :
+                return True
+            else :
+                return False
+        
+        else :
+            return False
+        
+
+    def is_numeric(chaine):
+
+        numeric_meta = MetaTousContraintes.objects.filter(
+            category = 'NUMERIQUE'
+        ).first()
+
+        regex = numeric_meta.contrainte
+        compiled_regex = re.compile(regex)
+
+        if isinstance(chaine, str):
+
+            if compiled_regex.match(chaine) :
+                return True
+            else :
+                return False
+        
+        else :
+            return False
+
+
+    def is_date(chaine):
+
+        date_meta = MetaTousContraintes.objects.filter(
+            category = 'DATE'
+        ).first()
+
+        regex = date_meta.contrainte
+
+        return bool(re.match(regex, str(chaine)))
+        
+    
+
+    def check_type_in_column(df, column_name, check_function):
+
+        """
+        Vérifie le type de données dans une colonne d'un DataFrame en utilisant une fonction de vérification spécifiée.
+
+        Parameters:
+        - df (pd.DataFrame): Le DataFrame contenant la colonne à vérifier.
+        - column_name (str): Le nom de la colonne à vérifier.
+        - check_function (callable): La fonction de vérification à utiliser (ex: DBTypesDetection.is_country).
+
+        Returns:
+        Tuple[int, float]: Le nombre et le pourcentage de valeurs correspondant au type spécifié.
+        """
+
+        random_sample = df[column_name].dropna().sample(n=20, random_state=42)
+        results = random_sample.apply(check_function)
+        count_true = results.sum()
+        percentage_true = (count_true / len(results)) * 100
+
+        return count_true, percentage_true
+    
+
+    def determine_majority_type(columns):
+
+        result = {}
+        for column, types in columns.items():
+            sorted_types = sorted(types.items(), key=lambda x: x[1], reverse=True)
+            if sorted_types[0][1] > 50.0:
+                result[column] = sorted_types[0][0]
+            else:
+                result[column] = 'UNKNOWN'
+        return result
+
+
+    def detect_columns_type(df):
+
+        result = {}
+        for column in df.columns:
+
+            _, numeric_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_numeric)
+            if numeric_percentage > 60.0:
+                result[column] = {'numerique': numeric_percentage}
+                continue
+
+            _, date_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_date)
+            if date_percentage > 60.0:
+                result[column] = {'date': date_percentage}
+                continue
+
+            _, phone_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_phone_number)
+            if phone_percentage > 60.0:
+                result[column] = {'phone': phone_percentage}
+                continue
+
+            _, email_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_email)
+            if email_percentage > 60.0:
+                result[column] = {'email': email_percentage}
+                continue
+
+            _, countries_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_country)
+            if countries_percentage > 60.0:
+                result[column] = {'pays': countries_percentage}
+                continue
+
+            _, cities_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_city)
+            if cities_percentage > 60.0:
+                result[column] = {'ville': cities_percentage}
+                continue
+
+            _, address_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_address)
+            if address_percentage > 60.0:
+                result[column] = {'adresse': address_percentage}
+                continue
+
+            result[column] = {
+                'pays': countries_percentage,
+                'ville': cities_percentage,
+                'adresse': address_percentage,
+                'email': email_percentage,
+                'phone': phone_percentage,
+                'numerique': numeric_percentage,
+                'date': date_percentage
+            }
+
+            final_types = DBTypesDetection.determine_majority_type(result)
+
+
+        return final_types
+
+
+
+
