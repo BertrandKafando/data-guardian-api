@@ -23,7 +23,6 @@
                 "commentaire": "Pour detecter des caracteres speciaux dans les emails en excluant l'arobase et le point"
             }
         }
-
     },
     "semantiques" : {
         "TYPE_EMAIL": {
