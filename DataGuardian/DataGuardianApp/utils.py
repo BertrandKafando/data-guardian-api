@@ -72,6 +72,26 @@ class DBFunctions:
 
                 print(f"Erreur lors de l'exécution de la fonction {nom_fonction}: {e}")
                 return -1
+            
+
+    def exec_function_postgresql_get_all(nom_fonction, *args):
+        result= []
+        with connection.cursor() as cursor:
+
+            try:
+
+                params = ', '.join('%s' for _ in args)
+                
+                cursor.execute(f"SELECT {nom_fonction}({params});", args)
+
+                result = cursor.fetchall()
+                
+                return result
+            
+            except Exception as e:
+
+                print(f"Erreur lors de l'exécution de la fonction {nom_fonction}: {e}")
+                return result 
 
 
     def insert_dataframe_into_postgresql_table(dataframe, table_name):
@@ -134,29 +154,36 @@ class DBFunctions:
         return nested_data
 
 
-    def check_nulls(columns, meta_table, nom_bd) : 
+    def check_nulls(columns, meta_table, nom_bd, diagnostic) : 
 
         meta_col_instances = list()
-
+        #supprimer la colonne avec le nom_bd+ _id
+        columns = [col for col in list(columns) if col != f"{nom_bd}_id"]
         for i in range(len(list(columns))) :
 
             col = list(columns)[i]
 
             meta_colonne = MetaColonne()
             meta_colonne.nom_colonne = col
-            result_nb_nulls = DBFunctions.executer_fonction_postgresql('NombreDeNULLs', nom_bd, col)
+            res_tab = DBFunctions.exec_function_postgresql_get_all('DiagnoticDeNULLs', nom_bd, col)
+            #get type of column
             result_type_col = DBFunctions.executer_fonction_postgresql('TypeDesColonne', str(nom_bd).lower(), str(col).lower())
-
-
-            if type(result_nb_nulls) != int :
-                meta_colonne.nombre_valeurs_manquantes = result_nb_nulls[0]
-                meta_colonne.meta_table = meta_table
-            else :
-                meta_colonne.meta_table = meta_table
-    
+            type_colonne = None
             if type(result_type_col) != int :
                 if result_type_col[0] :
                     meta_colonne.type_donnees = result_type_col[0]
+                    type_colonne = result_type_col[0]
+        
+            #insert into DiagnosticDetail
+            for i in range(len(res_tab)):
+                res = res_tab[i]
+                res = DataGuardianDiagnostic.extraire_id(res)
+                print("res",res)
+                DataGuardianDiagnostic.insert_diagnostic_details(res, col, None, "VALEUR_NULL", "La valeur est NULL", "VALEUR_NULL", diagnostic, type_colonne)
+            result_nb_nulls = len(res_tab)
+
+            meta_colonne.nombre_valeurs_manquantes = result_nb_nulls
+            meta_colonne.meta_table = meta_table
 
             meta_colonne.nombre_valeurs = meta_table.nombre_lignes
             meta_colonne.save()
@@ -880,38 +907,26 @@ class DBTypesDetection :
 class DataGuardianDiagnostic :
         # Liste des types de données considérés comme numériques
     types_numeriques = ['smallint', 'integer', 'bigint', 'decimal', 'numeric', 'real', 'double precision', 'smallserial', 'serial', 'bigserial']
-
-
-    def generate_view_name(user, table_name, col_name):
-        # concatenate the user id, table name and column name + timer(miliseconde) to generate a unique view name
-        name= f"v_outliers_{int(datetime.datetime.now().timestamp() * 1000)}"
-        #enleve les caracteres speciaux
-        name = re.sub(r'[^a-zA-Z0-9]', '_', name)
-        return name
+   
+    @transaction.atomic
+    def insert_diagnostic_details(id_ligne, nom_colonne, valeur, anomalie, commentaire, code_correction,diagnostic,type_colonne):
+        try:
+            detail = DiagnosticDetail()
+            detail.id_ligne = id_ligne
+            detail.nom_colonne = nom_colonne
+            detail.valeur = valeur
+            detail.anomalie = anomalie
+            detail.commentaire = commentaire
+            detail.code_correction = code_correction
+            detail.diagnostic = diagnostic
+            detail.type_colonne = type_colonne
+            detail.save()
+            return 0
+        except Exception as e:
+            print(f"Error inserting diagnostic details: {e}")
+            return -1      
     
-    def execute_postgresql_and_create_view(fonction,user,table_name, col_name) :
-        # generate the view name
-        view_name = DataGuardianDiagnostic.generate_view_name(user, table_name, col_name)
-        # execute the function usind execute_postgresql_function
-        result = DBFunctions.executer_fonction_postgresql('creer_vue_dynamique',view_name,fonction)
-        print(result)
-        return result
-    
-    def count_value_in_view(view_name) :
-        if view_name and view_name[0]:
-            try:
-                    with connection.cursor() as cursor:
-                        cursor.execute(f"SELECT COUNT(*) FROM {view_name[0]};")
-                        nombre_elements = cursor.fetchone()
-                        return nombre_elements
-            except Exception as e:
-                print(f"Erreur lors du comptage des éléments dans la vue {view_name[0]}: {e}")
-                return -1
-        else:
-            print("La vue n'existe pas")
-            return -1
-        
-    def check_column_outliers(df, col_name, id_col_name):
+    def chechk_column_outliers_python(df, col_name, id_col_name):
         """
         Identify outliers in a DataFrame column based on the Interquartile Range (IQR) method.
         Returns the id_col_name and col_name values of the outliers.
@@ -935,5 +950,25 @@ class DataGuardianDiagnostic :
                 outliers.append((id_col, col))
 
         return outliers
+    
+    def extraire_id(tuple_input):
+        # Extraire la chaîne du tuple
+        input_str = tuple_input[0]
+        print("input_str",input_str)
+
+        # Enlever les caractères externes pour isoler 'X,Y'
+        clean_str = input_str[2:-3]
+
+        # Séparer sur la virgule pour obtenir X et Y
+        x_str, _ = clean_str.split(',')
+        
+        # Tenter de convertir X en nombre entier
+        try:
+            x = int(x_str)
+            return x
+        except ValueError:
+            print("La partie 'X' de la chaîne ne contient pas un nombre valide.")
+            return None
+
 
 

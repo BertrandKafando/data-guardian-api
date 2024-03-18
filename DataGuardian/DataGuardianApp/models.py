@@ -200,11 +200,12 @@ class Diagnostic(models.Model):
     __repr__=__str__
 
 class DiagnosticDetail(models.Model):
-    diagnotic = models.ForeignKey(Diagnostic,related_name="diagnostic_detail", on_delete=models.CASCADE, null=False, blank=False)
+    diagnostic = models.ForeignKey(Diagnostic,related_name="diagnostic_detail", on_delete=models.CASCADE, null=False, blank=False)
     id_ligne = models.IntegerField(null=True, blank=True)
     nom_colonne = models.CharField(max_length=100)
-    valeur = models.CharField(max_length=100)
+    valeur = models.CharField(max_length=100, null=True, blank=True)
     anomalie = models.CharField(max_length=100, null=True, blank=True)
+    type_colonne = models.CharField(max_length=100, null=True, blank=True)
     commentaire = models.CharField(max_length=100, null=True, blank=True)
     code_correction = models.CharField(max_length=100, null=True, blank=True)
 

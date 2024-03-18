@@ -62,32 +62,35 @@ SELECT * FROM vue_caracteres_speciaux;
 
 
 -- FUNCTION 2:
-CREATE OR REPLACE FUNCTION count_outliers2(NOMTAB VARCHAR, Nom_COL VARCHAR, z_threshold NUMERIC) 
-RETURNS TABLE (Nom_Colonne VARCHAR, valeur_Outlier NUMERIC) AS
+CREATE OR REPLACE FUNCTION DiagnoticDeNULLs (NOMTAB VARCHAR, Nom_COL VARCHAR) RETURNS
+TABLE(id_ligne INTEGER, Nom_colonne TEXT)
+AS
 $$
 DECLARE
-  Query VARCHAR(2000);
-  mean_num NUMERIC(10,2);
-  std_dev NUMERIC(10,2);
-  outlier_count INTEGER := 0;
+Q VARCHAR(2000);
+NbValNulles INTEGER;
 BEGIN
-  -- Calculate the mean and standard deviation
-  mean_num := compute_mean_numeric(Nom_COL, NOMTAB);
-  std_dev := compute_std_numeric(Nom_COL, NOMTAB);
-
-  -- Check if the mean and standard deviation calculations were successful
-  IF (mean_num = -1 OR std_dev = -1) THEN
-    RAISE NOTICE 'Mean or standard deviation calculation failed';
-    RETURN QUERY SELECT 'Error', -1; -- Return error indication
-  END IF;
-
-  -- Calculer le score z et sélectionner les valeurs aberrantes
-  RETURN QUERY EXECUTE 'SELECT $1, ' || Nom_COL || ' FROM ' || NOMTAB || ' WHERE ABS((' || Nom_COL || ' - $2) / $3) > $4'
-  USING Nom_COL, mean_num, std_dev, z_threshold;
-
+Q := 'SELECT ' || NOMTAB || '_id, ''' || Nom_COL || ''' FROM ' || NOMTAB || ' WHERE ' || Nom_COL || ' IS NULL';
+IF (TypeDesColonne(NOMTAB, NOM_COL) = 'character varying') THEN
+Q := Q || ' OR (' || Nom_COL || ' IN (''MISSINGVALUE'',''NULL'', ''-'', ''='', ''!'', ''?'',''nan'', ''''))';
+END IF;
+RETURN QUERY EXECUTE Q;
 END;
 $$ LANGUAGE plpgsql;
 
+-- FUNCTION 3:
+DROP FUNCTION IF EXISTS values_not_matching_regex(VARCHAR, VARCHAR, VARCHAR);
+CREATE OR REPLACE FUNCTION values_not_matching_regex(NOMTAB VARCHAR, NOMCOL VARCHAR, REGEX VARCHAR)
+RETURNS TABLE (id_ligne INTEGER, nom_colonne TEXT, valeur_colonne VARCHAR)
+AS
+$$
+DECLARE
+Q VARCHAR (1000);
+BEGIN
+Q := 'SELECT ' || NOMTAB || '_id, ''' || NOMCOL || ''', ' || NOMCOL || ' FROM ' || NOMTAB || ' WHERE ' || NOMCOL || ' ~ ''' || REGEX || '''';
+RETURN QUERY EXECUTE Q;
+END;
+$$ LANGUAGE plpgsql;
 
 
 
