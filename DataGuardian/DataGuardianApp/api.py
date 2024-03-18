@@ -445,7 +445,7 @@ class DiagnosticViewSet(APIView):
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
-                    #bertrand
+                   
                     meta_cols_outliers = DBFunctions.check_outliers(meta_cols_instances_fn, nom_bd,connected_user,df)
 
                     meta_cols_repetitions = DBFunctions.check_cols_repetitions(meta_cols_outliers, nom_bd)
@@ -692,7 +692,7 @@ class ProjetViewSet(ModelViewSet):
 
         return queryset
 
-#bertrand
+
 class DiagnosticDetailViewSet(ModelViewSet):
     serializer_class= DiagnosticDetailSerializer
 
