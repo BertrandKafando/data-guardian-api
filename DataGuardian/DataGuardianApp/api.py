@@ -547,7 +547,6 @@ class MetaColonneViewSet(ModelViewSet):
 
         return queryset
 
-      
     
 class LoginView(APIView):
 

@@ -14,6 +14,7 @@ import pycountry
 import requests
 import geonamescache
 from google.cloud import translate
+from currency_symbols import CurrencySymbols
 
 
 class EmailThread(threading.Thread):
@@ -637,6 +638,30 @@ class DBTypesDetection :
             )
 
             return response.translations[0]
+        
+    
+    def get_currencies(url):
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            
+            return [details['currencyCode'] for code, details in data["supportedCurrenciesMap"].items()]
+        else:
+            print("Erreur lors de la récupération des données")
+            return []
+    
+
+    def is_amount(text):
+    
+        cleaned_text = text.replace(" ", "")
+        currencies = DBTypesDetection.get_currencies("https://api.currencyfreaks.com/v2.0/supported-currencies")
+        
+        currencies_symboles = (CurrencySymbols.get_symbol(currency) for currency in currencies)
+        currencies_symboles_cleaned = [symbole for symbole in currencies_symboles if symbole is not None]        
+        regex = "|".join(re.escape(s) for s in set(currencies_symboles_cleaned))
+        pattern = re.compile(rf"^\d+\s*({regex})$")
+        
+        return bool(pattern.match(cleaned_text))
 
         
     def is_country(country_name):
@@ -800,6 +825,11 @@ class DBTypesDetection :
                 result[column] = {'numerique': numeric_percentage}
                 continue
 
+            _, amount_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_amount)
+            if amount_percentage > 60.0:
+                result[column] = {'montant': amount_percentage}
+                continue
+
             _, date_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_date)
             if date_percentage > 60.0:
                 result[column] = {'date': date_percentage}
@@ -837,6 +867,7 @@ class DBTypesDetection :
                 'email': email_percentage,
                 'phone': phone_percentage,
                 'numerique': numeric_percentage,
+                'montant': amount_percentage,
                 'date': date_percentage
             }
 
