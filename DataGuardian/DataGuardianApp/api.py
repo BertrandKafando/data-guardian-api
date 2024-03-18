@@ -562,7 +562,6 @@ class LoginView(APIView):
 
         user_instance = Utilisateur.objects.filter(compte__identifiant=authentication_serializer.data.get("identifiant")).first()
 
-
         user = authenticate(
             username = authentication_serializer.data.get("identifiant"),
             password = authentication_serializer.data.get("mot_de_passe")
@@ -578,12 +577,12 @@ class LoginView(APIView):
         #token_expire_handler will check, if the token is expired it will generate new one
         is_expired, token = token_expire_handler(token)   
         user_serialized = UtilisateurSerializer(user_instance)
-        permission=list(user.get_all_permissions())[0]
+        permission = list(user.get_all_permissions())[0]
         user_instance_data = user_serialized.data
         user_instance_data["identifiant"]=authentication_serializer.data.get("identifiant")
-        user_instance_data.pop('compte',None)
-        user_instance_data.pop('email',None)
-        user_instance_data.pop('telephone',None)
+        user_instance_data.pop('compte', None)
+        user_instance_data.pop('email', None)
+        user_instance_data.pop('telephone', None)
 
         return Response({
             'user': user_instance_data, 
