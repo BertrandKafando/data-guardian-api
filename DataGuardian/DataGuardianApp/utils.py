@@ -9,6 +9,8 @@ import os
 import numpy as np
 import pandas as pd
 import datetime
+import re
+from datetime import datetime
 from .models import *
 import pycountry
 import requests
@@ -972,3 +974,117 @@ class DataGuardianDiagnostic :
 
 
 
+class DBCorrection:
+
+
+    def remove_espaces(input_value):
+
+        cleaned_input = re.sub(r'\s+', ' ', input_value)
+        cleaned_input = cleaned_input.strip()
+        return cleaned_input
+
+
+    def remove_repetitions(chaine):
+
+        return re.sub(r'(.)\1{2,}', r'\1\1', chaine)
+    
+
+    def drop_duplicates(df):
+
+        df_without_duplicates = df.drop_duplicates()
+        return df_without_duplicates
+    
+
+    def replace_outliers(valeurs, indices_outliers, methode='moyenne'):
+        
+        if methode == 'mediane':
+            valeur_de_remplacement = np.median(valeurs)
+        else:
+            valeur_de_remplacement = np.mean(valeurs)
+        
+        for indice in indices_outliers:
+            valeurs[indice] = valeur_de_remplacement
+        
+        return valeurs
+
+
+    def replace_outliers(df, column, outliers, method='moyenne'):
+        
+        if method == 'mediane':
+            replacement_value = df[column].median()
+        else:
+            replacement_value = df[column].mean()
+        
+        df[column] = df[column].apply(
+            lambda x: replacement_value if x in outliers else x)
+        
+        return df
+    
+
+    def convert_date_format(date_str, output_format="%m-%d-%Y", input_format=None):
+
+        if input_format:
+            try:
+                date_obj = datetime.strptime(date_str, input_format)
+                return date_obj.strftime(output_format)
+            except ValueError:
+                return "Format de date inconnu ou incorrect."
+        else:
+            
+            possible_formats = [
+                "%Y-%m-%d", "%d-%m-%Y", "%m-%d-%Y",
+                "%Y/%m/%d", "%d/%m/%Y", "%m/%d/%Y",
+                "%Y.%m.%d", "%d.%m.%Y", "%m.%d.%Y",
+                "%Y %m %d", "%d %m %Y", "%m %d %Y",
+                "%b %d, %Y", "%d %b %Y",
+            ]
+            
+            for format_ in possible_formats :
+                try:
+                    date_obj = datetime.strptime(date_str, format_)
+                    return date_obj.strftime(output_format)
+                except ValueError:
+                    continue 
+            
+            return "Format de date inconnu."
+        
+
+    def remove_currency_symbol(amount):
+
+        numeric_amount = re.sub(r'[^\d.]+', '', amount)
+        return numeric_amount
+    
+
+    def convert_currency(amount, conversion_rate, new_currency_symbol=None):
+
+        numeric_amount = float(re.sub(r'[^\d.]+', '', amount))
+        converted_amount = numeric_amount * conversion_rate
+        
+        if new_currency_symbol:
+            return f"{new_currency_symbol}{converted_amount:,.2f}"
+        else:
+            return f"{converted_amount:,.2f}"
+        
+
+
+    #TODO : fonction pour corriger l'écriture des pays et villes (ref : GetAnomaliesSuggestions, GetAnomaliesBasedOn, TranslateCountryName)
+    #TODO : fonction pour corriger les numéros de téléphone ou les supprimer (ref : table des faits)
+    #TODO : fonction pour corriger les adresses email : supprimer ou pas
+        
+
+    def apply_correction(df, nom_colonne, fonction_correction):
+        
+        """
+        Applique une fonction de correction sur une colonne spécifique d'un DataFrame.
+
+        Parameters:
+        - df (pd.DataFrame): Le DataFrame sur lequel appliquer la correction.
+        - nom_colonne (str): Le nom de la colonne sur laquelle appliquer la fonction de correction.
+        - fonction_correction (function): La fonction de correction à appliquer sur la colonne.
+
+        Returns:
+        pd.DataFrame: Le DataFrame avec la colonne corrigée.
+        """
+        
+        df[nom_colonne] = df[nom_colonne].apply(fonction_correction)
+        return df
