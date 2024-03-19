@@ -225,8 +225,8 @@ class MetaTable(models.Model):
     date_creation = models.DateTimeField(auto_now_add=True)
     nombre_colonnes = models.IntegerField(null=True, blank=True)
     nombre_lignes = models.IntegerField(null=True, blank=True)
-    nombre_doublons = models.IntegerField(null=True, blank=True)
-    nombre_similaires = models.IntegerField(null=True, blank=True)
+    nombre_doublons = models.IntegerField(null=True, blank=True, default=None)
+    nombre_similaires = models.IntegerField(null=True, blank=True, default=None)
     commentaire = models.TextField(null=True, blank=True)
 
     def __str__(self):
