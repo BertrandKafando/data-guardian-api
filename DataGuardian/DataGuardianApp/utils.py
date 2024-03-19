@@ -15,7 +15,7 @@ import requests
 import geonamescache
 from google.cloud import translate
 from currency_symbols import CurrencySymbols
-
+import re
 
 class EmailThread(threading.Thread):
 
@@ -192,26 +192,8 @@ class DBFunctions:
 
         return meta_col_instances
 
-    def check_constraints_for_email(col_instance, nom_bd, diagnostic):
-        contraintes = MetaTousContraintes.objects.filter(category__icontains="EMAIL")
-        for constraint in contraintes : 
-            result_values_not_matching_regex = DBFunctions.exec_function_postgresql_get_all('values_not_matching_regex', nom_bd, col_instance.nom_colonne, constraint.contrainte)
-            count_anomalies = len(result_values_not_matching_regex)
-            #insérer le nombre d'anomalies détectés
-            if count_anomalies > 0 :
-                anomalie = DBFunctions.save_number_of_anomalies(constraint.nom_contrainte, count_anomalies)
-                col_instance.meta_anomalie.add(anomalie)
-            #insérer les résultats dans détail diagnostic
-            for result in result_values_not_matching_regex:
-                DataGuardianDiagnostic.insert_diagnostic_details(result[0], result[1], result[2], "EMAIL_INCORRECTE", "L'adresse email est incorrecte", "CODE_CORRECTION_EMAIL", diagnostic, "email")
-                
-                
 
-        col_instance.contraintes.add(*contraintes)
-        return col_instance
-        
-
-    def check_constraints(columns, nom_bd, diagnostic, columns_types = {}) : 
+    def check_constraints(columns, nom_bd, diagnostic, columns_types = {}, df = None) : 
 
         new_columns_instance = list()
 
@@ -222,31 +204,76 @@ class DBFunctions:
             elif col_instance.type_donnees == "date":
                 pass
             elif col_instance.type_donnees == "character varying":
+                
+                #type semantique numerique
+                if columns_types[col_instance.nom_colonne] == "numerique":
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_NUMERIQUE',
+                        'anomalie': 'VALEUR_NUMERIQUE_INCORRECTE',
+                        'commentaire' : "La valeur numérique est incorrecte", 
+                        'code_correction': "CODE_CORRECTION_NUMERIQUE",
+                        'type_donnee': 'numerique'
+                    }
+                    col_instance = SemanticFunctions.check_constraints_for_semantics_types(col_instance, nom_bd, diagnostic, infos_diagnostic)
+                     
+                #type semantique email
+                elif columns_types[col_instance.nom_colonne] == "email":
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_EMAIL',
+                        'anomalie': 'EMAIL_INCORRECTE',
+                        'commentaire' : "L'adresse email est incorrecte", 
+                        'code_correction': "CODE_CORRECTION_EMAIL",
+                        'type_donnee': 'email'
+                    }
+                    col_instance = SemanticFunctions.check_constraints_for_semantics_types(col_instance, nom_bd, diagnostic, infos_diagnostic)
+                
+                #type semantique date
+                elif columns_types[col_instance.nom_colonne] == "date":
+                    infos_diagnostic = {
+                        'categorie' : 'FORMAT_DATE',
+                        'anomalie': 'FORMAT_DATE_INCORRECTE',
+                        'commentaire' : "Le format de la date est incorrect", 
+                        'code_correction': "CODE_CORRECTION_FORMAT_DATE",
+                        'type_donnee': 'date'
+                    }
+                    col_instance = SemanticFunctions.check_date_format(df, col_instance, nom_bd, diagnostic, infos_diagnostic)
+                
+                elif columns_types[col_instance.nom_colonne] == "phone":
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_TELEPHONE',
+                        'anomalie': 'FORMAT_NUMERO_TELEPHONE_INCORRECTE',
+                        'commentaire' : "Le format du numéro de téléphone est incorrect", 
+                        'code_correction': "CODE_CORRECTION_PHONE",
+                        'type_donnee': 'phone'
+                    }
+                    col_instance = SemanticFunctions.check_constraints_for_semantics_types(col_instance, nom_bd, diagnostic, infos_diagnostic)
+                elif columns_types[col_instance.nom_colonne] == "adresse":
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_ADRESSE',
+                        'anomalie': 'FORMAT_ADRESSE_INCORRECTE',
+                        'commentaire' : "Le format adresse est incorrecte", 
+                        'code_correction': "CODE_CORRECTION_ADRESSE",
+                        'type_donnee': 'adresse'
+                    }
+                    col_instance = SemanticFunctions.check_constraints_for_semantics_types(col_instance, nom_bd, diagnostic, infos_diagnostic)
 
-                if columns_types[col_instance.nom_colonne] == "email":
-                    col_instance = DBFunctions.check_constraints_for_email(col_instance, nom_bd, diagnostic) # verifier uniquement les contraintes concernant l'email
 
-            # On suppose que toutes les règles varchars s'appliquent sur cette colonne (On a pas encore la possibilité de connaitre la sémantique)
+                elif columns_types[col_instance.nom_colonne] == "groupe_sanguin":
+                    pass
 
-                    anomalies = col_instance.meta_anomalie.all()
-                    # print(anomalies)
+                elif columns_types[col_instance.nom_colonne] == "pays":
+                    pass
 
-                    nb_anomalies = 0
+                elif columns_types[col_instance.nom_colonne] == "ville":
+                    pass
 
-                    if anomalies :
-
-                        for anomalie_elt in anomalies :
-                            if anomalie_elt.nom_anomalie == "Premiere Forme normale" :
-                                if anomalie_elt.valeur_trouvee == 0 :
-                                    nb_anomalies += 1
-                            else :
-                                if isinstance(anomalie_elt.valeur_trouvee, int) :
-                                    if anomalie_elt.valeur_trouvee > 0 :
-                                        nb_anomalies += anomalie_elt.valeur_trouvee
-
-                    col_instance.nombre_anomalies = nb_anomalies
-                    col_instance.save()
-                    new_columns_instance.append(col_instance)
+                elif columns_types[col_instance.nom_colonne] == "continent":
+                    pass
+                    
+                else:
+                    pass
+                   
+                new_columns_instance.append(col_instance)
 
         return new_columns_instance
 
@@ -290,7 +317,7 @@ class DBFunctions:
         return result_doublons
     
     
-    def check_outliers(columns, nom_bd,connected_user,df) : 
+    def check_outliers(columns, nom_bd,connected_user,df, columns_types={}) : 
 
         new_columns_instance = list()
         #supprimer la colonne avec le nom_bd+ _id
@@ -301,7 +328,6 @@ class DBFunctions:
             col_instance.nombre_outliers = 0
             if result_type_col[0] in DataGuardianDiagnostic.types_numeriques:
                 id_col_name= str(nom_bd).lower() + "_id"
-                print("working on ",col_instance.nom_colonne, id_col_name)
                 res =DataGuardianDiagnostic.chechk_column_outliers_python(df, str(col_instance.nom_colonne), id_col_name)
                 print("outliers",res)
                 result_outliers = len(res)
@@ -335,11 +361,21 @@ class DBFunctions:
 
         return new_columns_instance
 
-
-    def get_other_stats(columns, nom_bd) : 
-
+    def check_general_constraints(columns, nom_bd, diagnostic, columns_types = {}):
         new_columns_instance = list()
 
+        for col_instance in columns :
+
+            if col_instance.type_donnees == "character varying" and columns_types[col_instance.nom_colonne] == "UNKNOWN":
+                col_instance = SemanticFunctions.check_constraints_for_unknown(col_instance, nom_bd, diagnostic)
+            
+            new_columns_instance.append(col_instance)
+                
+        return new_columns_instance
+
+
+    def get_other_stats(columns, nom_bd) : 
+        new_columns_instance = list()
         for col_instance in columns :
 
             result_uppercases = DBFunctions.executer_fonction_postgresql('CountUppercaseNames', str(nom_bd).lower(), str(col_instance.nom_colonne).lower())
@@ -349,13 +385,13 @@ class DBFunctions:
             result_max_val = DBFunctions.executer_fonction_postgresql('get_max_value', str(col_instance.nom_colonne).lower(), str(nom_bd).lower())
 
             if isinstance(result_uppercases, tuple):
-                    col_instance.nombre_majuscules = result_uppercases[0]
+                col_instance.nombre_majuscules = result_uppercases[0]
 
             if isinstance(result_lowercases, tuple) :
-                    col_instance.nombre_minuscules = result_lowercases[0]
+                col_instance.nombre_minuscules = result_lowercases[0]
 
             if isinstance(result_init_caps, tuple) :
-                    col_instance.nombre_init_cap = result_init_caps[0]
+                col_instance.nombre_init_cap = result_init_caps[0]
 
             if type(result_min_val) != int :
                 if result_min_val[0] :
@@ -392,6 +428,22 @@ class DBFunctions:
         return score_diagnostic
        
 
+    def save_number_of_anomalie_in_meta_colonne(col_instance):
+        anomalies = col_instance.meta_anomalie.all()
+        nb_anomalies = 0
+        if anomalies :
+            for anomalie_elt in anomalies :
+                if anomalie_elt.nom_anomalie == "Premiere Forme normale" :
+                    if anomalie_elt.valeur_trouvee == 0 :
+                        nb_anomalies += 1
+                else :
+                    if isinstance(anomalie_elt.valeur_trouvee, int) :
+                        if anomalie_elt.valeur_trouvee > 0 :
+                            nb_anomalies += anomalie_elt.valeur_trouvee
+
+        col_instance.nombre_anomalies = nb_anomalies
+        col_instance.save()
+        return col_instance
     # Fonction pour nettoyer les noms de colonnes
     def clean_column_name(name):
         new_name = name.strip() 
@@ -939,7 +991,6 @@ class DataGuardianDiagnostic :
             detail.code_correction = code_correction
             detail.diagnostic = diagnostic
             detail.type_colonne = type_colonne
-            print(detail.id_ligne, detail.nom_colonne, detail.valeur,detail.anomalie, detail.diagnostic)
             detail.save()
             return 0
         except Exception as e:
@@ -992,3 +1043,85 @@ class DataGuardianDiagnostic :
 
 
 
+class SemanticFunctions:
+    def check_constraints_for_semantics_types(col_instance, nom_bd, diagnostic, infos_diagnostic):
+        contraintes = MetaTousContraintes.objects.filter(category__icontains=infos_diagnostic["categorie"])
+        for constraint in contraintes : 
+            result_values_not_matching_regex = DBFunctions.exec_function_postgresql_get_all('values_not_matching_regex', nom_bd, col_instance.nom_colonne, constraint.contrainte)
+            count_anomalies = len(result_values_not_matching_regex)
+            #insérer le nombre d'anomalies détectés
+            if count_anomalies > 0 :
+                anomalie = DBFunctions.save_number_of_anomalies(constraint.nom_contrainte, count_anomalies)
+                col_instance.meta_anomalie.add(anomalie)
+            #insérer les résultats dans détail diagnostic
+            for result in result_values_not_matching_regex:
+                DataGuardianDiagnostic.insert_diagnostic_details(result[0], result[1], result[2], infos_diagnostic["anomalie"], infos_diagnostic["commentaire"], infos_diagnostic["code_correction"], diagnostic, infos_diagnostic["type_donnee"])
+                
+        col_instance.contraintes.add(*contraintes)
+        col_instance = DBFunctions.save_number_of_anomalie_in_meta_colonne(col_instance)
+        return col_instance
+    
+    def check_constraints_for_unknown(col_instance, nom_bd, diagnostic):
+        contraintes = MetaTousContraintes.objects.filter(category__icontains="string")
+        for constraint in contraintes : 
+            result_values_not_matching_regex = DBFunctions.exec_function_postgresql_get_all('values_not_matching_regex', nom_bd, col_instance.nom_colonne, constraint.contrainte)
+            count_anomalies = len(result_values_not_matching_regex)
+            #insérer le nombre d'anomalies détectés
+            if count_anomalies > 0 :
+                anomalie = DBFunctions.save_number_of_anomalies(constraint.nom_contrainte, count_anomalies)
+                col_instance.meta_anomalie.add(anomalie)
+            #insérer les résultats dans détail diagnostic
+            for result in result_values_not_matching_regex:
+                DataGuardianDiagnostic.insert_diagnostic_details(result[0], result[1], result[2], constraint.nom_contrainte, constraint.nom_contrainte, "CODE_CORRECTION_GENERAL_CONSTRAINST", diagnostic, "UNKNOWN")
+                
+        col_instance.contraintes.add(*contraintes)
+        col_instance = DBFunctions.save_number_of_anomalie_in_meta_colonne(col_instance)
+        return col_instance
+
+
+
+    def get_date_format(date_string):
+        # List of common date formats to check against
+        date_formats = {
+        r'\d{4}-\d{2}-\d{2}': 'YYYY-MM-DD',
+        r'\d{2}-\d{2}-\d{4}': 'MM-DD-YYYY',
+        r'\d{2}/\d{2}/\d{4}': 'MM/DD/YYYY',
+        r'\d{4}/\d{2}/\d{2}': 'YYYY/MM/DD',
+        r'\d{2}\.\d{2}\.\d{4}': 'MM.DD.YYYY',
+        r'\d{4}\.\d{2}\.\d{2}': 'YYYY.MM.DD',
+        r'\d{2}\s[A-Z][a-z]{2}\s\d{4}': 'MM Mon YYYY',  
+        r'[A-Z][a-z]{2}\s\d{2},\s\d{4}': 'Mon DD, YYYY', 
+        r'\d{2}\s(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{4}': 'DD Mon YYYY (English)', 
+        r'\d{2}\s(janv\.|févr\.|mars|avr\.|mai|juin|juil\.|août|sept\.|oct\.|nov\.|déc\.)\s\d{4}': 'DD Mon YYYY (French)',
+        r'\d{2}/\d{2}/\d{2}': 'DD/MM/YY',
+        r'\d{2}-\d{2}-\d{2}': 'DD-MM-YY',
+    }
+        
+        if date_string != None:
+            for date_format, label in date_formats.items():
+                if re.match(date_format, date_string):
+                    return label
+        
+        
+        return "Format de date inconnu"
+    
+
+    def check_date_format(df, col_instance, nom_bd, diagnostic, infos_diagnostic):
+        df_copy = df.copy()
+        df_copy[col_instance.nom_colonne] = pd.to_datetime(df_copy[col_instance.nom_colonne], errors='coerce')
+        incorrect_formats = df_copy[df_copy[col_instance.nom_colonne].isna()]
+
+        df_bad_format = df[df.index.isin(incorrect_formats.index)]
+        # df_good_format = df[~df.index.isin(incorrect_formats.index)]
+        #df_bad_format[col_instance.nom_colonne + '_date_format'] = df[col_instance.nom_colonne].apply(SemanticFunctions.get_date_format)
+        
+        for row in df_bad_format[[nom_bd+'_id', col_instance.nom_colonne]].itertuples(index=False):
+            id_ligne = row[0]
+            valeur = row[1]
+            DataGuardianDiagnostic.insert_diagnostic_details(id_ligne, col_instance.nom_colonne, valeur, infos_diagnostic["anomalie"], infos_diagnostic["commentaire"], infos_diagnostic["code_correction"], diagnostic, infos_diagnostic["type_donnee"])
+
+        col_instance = DBFunctions.save_number_of_anomalie_in_meta_colonne(col_instance)
+        return col_instance
+
+
+        

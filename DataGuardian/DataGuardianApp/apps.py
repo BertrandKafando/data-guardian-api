@@ -141,14 +141,14 @@ def run_sql_scripts(sender, **kwargs):
     if OS_PLATFORM =="WINDOWS" : 
 
         functions_script_path = os.path.join(BASE_DIR, "DataGuardian\DataGuardianApp\db_configs\\functions.sql")
-        test_data_script_path = os.path.join(BASE_DIR, "DataGuardian\DataGuardianApp\db_configs\\test_data.sql")
+        #test_data_script_path = os.path.join(BASE_DIR, "DataGuardian\DataGuardianApp\db_configs\\test_data.sql")
 
     try:
         if os.path.isfile(functions_script_path):
             subprocess.run(['psql', '-U', env("POSTGRES_USER"), '-d', env("POSTGRES_DB"), '-a', '-f', functions_script_path])
-            print("Scripts SQL exécutés avec succès.")
-        if os.path.isfile(test_data_script_path):
-            subprocess.run(['psql', '-U', env("POSTGRES_USER"), '-d', env("POSTGRES_DB"), '-a', '-f', test_data_script_path])
-            print("Création des données de test réalisé avec succès.")
+        #     print("Scripts SQL exécutés avec succès.")
+        # if os.path.isfile(test_data_script_path):
+        #     subprocess.run(['psql', '-U', env("POSTGRES_USER"), '-d', env("POSTGRES_DB"), '-a', '-f', test_data_script_path])
+        #     print("Création des données de test réalisé avec succès.")
     except Exception as e:
         print(f"Erreur lors de l'exécution des scripts SQL : {e}")

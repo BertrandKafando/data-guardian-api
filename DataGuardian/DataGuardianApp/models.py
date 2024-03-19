@@ -203,7 +203,7 @@ class DiagnosticDetail(models.Model):
     diagnostic = models.ForeignKey(Diagnostic,related_name="diagnostic_detail", on_delete=models.CASCADE, null=False, blank=False)
     id_ligne = models.IntegerField(null=True, blank=True)
     nom_colonne = models.CharField(max_length=100)
-    valeur = models.CharField(max_length=100, null=True, blank=True)
+    valeur = models.CharField(max_length=1000, null=True, blank=True)
     anomalie = models.CharField(max_length=100, null=True, blank=True)
     type_colonne = models.CharField(max_length=100, null=True, blank=True)
     commentaire = models.CharField(max_length=100, null=True, blank=True)

@@ -344,16 +344,15 @@ class DiagnosticViewSet(APIView):
                 """récupérer les types sémantiques"""
                 #columns_types =  DBTypesDetection.detect_columns_type(df)
                 columns_types = {'clients_20240318233743_id': 'UNKNOWN', 'Column_0': 'UNKNOWN', 'Column_1': 'UNKNOWN', 'Column_2': 'UNKNOWN', 'Column_3': 'UNKNOWN', 'Column_4': 'UNKNOWN', 'Column_5': 'numerique', 'Column_6': 'UNKNOWN', 'Column_7': 'numerique', 'Column_8': 'ville', 'Column_9': 'pays', 'Column_10': 'email', 'Column_11': 'phone', 'Column_12': 'date', 'Column_13': 'date', 'Column_14': 'UNKNOWN', 'Column_15': 'UNKNOWN'}
-
+                #columns_types = {'Employee': 'UNKNOWN', 'Amount':'numerique'}
 
                 #Diagnostic concernant tous les types
                 #vérifier les valeurs manquantes
                 
                 #compter les doublons
 
-
+                #ok
                 if parametre_diagnostic == "VAL_MANQ" :
-
                     meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
                     DBFunctions.compute_score(meta_cols_instance_nulls, base_de_donnees)
 
@@ -362,7 +361,7 @@ class DiagnosticViewSet(APIView):
 
                     meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
 
-                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd,diagnostic=diagnostic, columns_types=columns_types)
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd,diagnostic=diagnostic, columns_types=columns_types, df=df)
 
                     DBFunctions.compute_score(meta_cols_instances_with_constraints, base_de_donnees)
 
@@ -370,9 +369,9 @@ class DiagnosticViewSet(APIView):
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN" :
 
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd)
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
 
-                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd,diagnostic=diagnostic, columns_types=columns_types)
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd,diagnostic=diagnostic, columns_types=columns_types, df=df)
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
@@ -382,10 +381,9 @@ class DiagnosticViewSet(APIView):
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN_DUPLICATIONS" :
 
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd)
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
 
-                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd,diagnostic=diagnostic, columns_types=columns_types)
-
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd,diagnostic=diagnostic, columns_types=columns_types, df=df)
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
@@ -407,8 +405,6 @@ class DiagnosticViewSet(APIView):
                     - repetition de colonnes
                     """
                     
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
-
                     # Number if
                     """
                     - check_outliers
@@ -452,19 +448,27 @@ class DiagnosticViewSet(APIView):
                         
                     """
 
-                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd,diagnostic=diagnostic, columns_types=columns_types)
+                    #all types
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
 
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd,diagnostic=diagnostic, columns_types=columns_types, df=df)
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
-                   
-                    meta_cols_outliers = DBFunctions.check_outliers(meta_cols_instances_fn, nom_bd,connected_user,df)
+                    meta_cols_repetitions = DBFunctions.check_cols_repetitions(meta_cols_instances_fn, nom_bd)
 
-                    meta_cols_repetitions = DBFunctions.check_cols_repetitions(meta_cols_outliers, nom_bd)
+                    attributsCles = ', '.join(df.columns)
 
-                    meta_cols_others = DBFunctions.get_other_stats(meta_cols_repetitions, nom_bd)
+                    DBFunctions.count_doublons(meta_table, nom_bd, attributsCles)
 
-                    DBFunctions.compute_score(meta_cols_others, base_de_donnees)
+                    meta_cols_outliers = DBFunctions.check_outliers(meta_cols_repetitions, nom_bd,connected_user,df, columns_types)
+                    
+                    
+                    meta_cols_others = DBFunctions.get_other_stats(meta_cols_outliers, nom_bd)
+                    meta_cols_general_constraints = DBFunctions.check_general_constraints(meta_cols_others, nom_bd, diagnostic, columns_types = columns_types)
+
+
+                    DBFunctions.compute_score(meta_cols_general_constraints, base_de_donnees)
 
                     #DBFunctions.check_funtional_dependancies(meta_cols_others, nom_bd)
 

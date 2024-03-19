@@ -1557,9 +1557,10 @@ RETURNS TABLE (id_ligne INTEGER, nom_colonne TEXT, valeur_colonne VARCHAR)
 AS
 $$
 DECLARE
-Q VARCHAR (1000);
+    Q VARCHAR(1000);
 BEGIN
-Q := 'SELECT ' || NOMTAB || '_id, ''' || NOMCOL || ''', ' || NOMCOL || ' FROM ' || NOMTAB || ' WHERE ' || NOMCOL || ' !~ ''' || REGEX || '''';
-RETURN QUERY EXECUTE Q;
+    Q := 'SELECT ' || NOMTAB || '_id, ''' || NOMCOL || ''', ' || NOMCOL || ' FROM ' || NOMTAB || ' WHERE ' || NOMCOL || ' !~ ''' || REGEX || '''';
+    RAISE NOTICE 'Query: %', Q; 
+    RETURN QUERY EXECUTE Q;
 END;
 $$ LANGUAGE plpgsql;
