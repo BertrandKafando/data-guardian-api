@@ -12,7 +12,7 @@
         },
         "Caracteres speciaux": {
             "type": "string",
-            "definition": "[[:punct:]]$",
+            "definition": "^[[:punct:]]$",
             "commentaire": "Pour detecter des caracteres speciaux"
         },
         "specifiques":{

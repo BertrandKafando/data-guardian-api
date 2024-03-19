@@ -75,14 +75,17 @@ class DBFunctions:
             
 
     def exec_function_postgresql_get_all(nom_fonction, *args):
+
         result= []
         with connection.cursor() as cursor:
 
             try:
 
-                params = ', '.join('%s' for _ in args)
+                # params = ', '.join('%s' for _ in args)
                 
-                cursor.execute(f"SELECT {nom_fonction}({params});", args)
+                # cursor.execute(f"SELECT {nom_fonction}({params});", args)
+
+                cursor.callproc(nom_fonction, list(args))
 
                 result = cursor.fetchall()
                 
@@ -165,7 +168,7 @@ class DBFunctions:
 
             meta_colonne = MetaColonne()
             meta_colonne.nom_colonne = col
-            res_tab = DBFunctions.exec_function_postgresql_get_all('DiagnoticDeNULLs', nom_bd, col)
+            res_diagnostic_nulls = DBFunctions.exec_function_postgresql_get_all('DiagnoticDeNULLs', nom_bd, col)
             #get type of column
             result_type_col = DBFunctions.executer_fonction_postgresql('TypeDesColonne', str(nom_bd).lower(), str(col).lower())
             type_colonne = None
@@ -175,12 +178,9 @@ class DBFunctions:
                     type_colonne = result_type_col[0]
         
             #insert into DiagnosticDetail
-            for i in range(len(res_tab)):
-                res = res_tab[i]
-                res = DataGuardianDiagnostic.extraire_id(res)
-                print("res",res)
-                DataGuardianDiagnostic.insert_diagnostic_details(res, col, None, "VALEUR_NULL", "La valeur est NULL", "VALEUR_NULL", diagnostic, type_colonne)
-            result_nb_nulls = len(res_tab)
+            for result in res_diagnostic_nulls:
+                DataGuardianDiagnostic.insert_diagnostic_details(result[0], col, None, "VALEUR_NULL", "La valeur est NULL", "VALEUR_NULL", diagnostic, type_colonne)
+            result_nb_nulls = len(res_diagnostic_nulls)
 
             meta_colonne.nombre_valeurs_manquantes = result_nb_nulls
             meta_colonne.meta_table = meta_table
@@ -191,51 +191,62 @@ class DBFunctions:
             meta_col_instances.append(meta_colonne)
 
         return meta_col_instances
-    
 
-    def check_constraints(columns, nom_bd) : 
+    def check_constraints_for_email(col_instance, nom_bd, diagnostic):
+        contraintes = MetaTousContraintes.objects.filter(category__icontains="EMAIL")
+        for constraint in contraintes : 
+            result_values_not_matching_regex = DBFunctions.exec_function_postgresql_get_all('values_not_matching_regex', nom_bd, col_instance.nom_colonne, constraint.contrainte)
+            count_anomalies = len(result_values_not_matching_regex)
+            #insérer le nombre d'anomalies détectés
+            if count_anomalies > 0 :
+                anomalie = DBFunctions.save_number_of_anomalies(constraint.nom_contrainte, count_anomalies)
+                col_instance.meta_anomalie.add(anomalie)
+            #insérer les résultats dans détail diagnostic
+            for result in result_values_not_matching_regex:
+                DataGuardianDiagnostic.insert_diagnostic_details(result[0], result[1], result[2], "EMAIL_INCORRECTE", "L'adresse email est incorrecte", "CODE_CORRECTION_EMAIL", diagnostic, "email")
+                
+                
+
+        col_instance.contraintes.add(*contraintes)
+        return col_instance
+        
+
+    def check_constraints(columns, nom_bd, diagnostic, columns_types = {}) : 
 
         new_columns_instance = list()
 
         for col_instance in columns :
 
+            if col_instance.type_donnees == "integer":
+                pass
+            elif col_instance.type_donnees == "date":
+                pass
+            elif col_instance.type_donnees == "character varying":
+
+                if columns_types[col_instance.nom_colonne] == "email":
+                    col_instance = DBFunctions.check_constraints_for_email(col_instance, nom_bd, diagnostic) # verifier uniquement les contraintes concernant l'email
+
             # On suppose que toutes les règles varchars s'appliquent sur cette colonne (On a pas encore la possibilité de connaitre la sémantique)
 
-            contraintes = MetaTousContraintes.objects.filter(category__icontains="String")
-            for constraint in contraintes : 
+                    anomalies = col_instance.meta_anomalie.all()
+                    # print(anomalies)
 
-                result_count_values_not_matching_regex = DBFunctions.executer_fonction_postgresql('count_values_not_matching_regex', nom_bd, col_instance.nom_colonne, constraint.contrainte)
+                    nb_anomalies = 0
 
-                if type(result_count_values_not_matching_regex) != int :
+                    if anomalies :
 
-                    if result_count_values_not_matching_regex[0] != 0 :
+                        for anomalie_elt in anomalies :
+                            if anomalie_elt.nom_anomalie == "Premiere Forme normale" :
+                                if anomalie_elt.valeur_trouvee == 0 :
+                                    nb_anomalies += 1
+                            else :
+                                if isinstance(anomalie_elt.valeur_trouvee, int) :
+                                    if anomalie_elt.valeur_trouvee > 0 :
+                                        nb_anomalies += anomalie_elt.valeur_trouvee
 
-                        anomalie = MetaAnomalie()
-                        anomalie.nom_anomalie = constraint.nom_contrainte
-                        anomalie.valeur_trouvee = int(result_count_values_not_matching_regex[0])
-                        anomalie.save()
-                        col_instance.meta_anomalie.add(anomalie)
-                        
-            col_instance.contraintes.add(*contraintes)
-
-            anomalies = col_instance.meta_anomalie.all()
-
-            nb_anomalies = 0
-
-            if anomalies :
-
-                for anomalie_elt in anomalies :
-                    if anomalie_elt.nom_anomalie == "Premiere Forme normale" :
-                        if anomalie_elt.valeur_trouvee == 0 :
-                            nb_anomalies += 1
-                    else :
-                        if isinstance(anomalie_elt.valeur_trouvee, int) :
-                            if anomalie_elt.valeur_trouvee > 0 :
-                                nb_anomalies += anomalie_elt.valeur_trouvee
-
-            col_instance.nombre_anomalies = nb_anomalies
-            col_instance.save()
-            new_columns_instance.append(col_instance)
+                    col_instance.nombre_anomalies = nb_anomalies
+                    col_instance.save()
+                    new_columns_instance.append(col_instance)
 
         return new_columns_instance
 
@@ -388,6 +399,13 @@ class DBFunctions:
         res.replace('', '_')
         res.replace('__', '_')
         return res
+    
+    def save_number_of_anomalies(nom_anomalie, valeur_trouvee):
+        anomalie = MetaAnomalie()
+        anomalie.nom_anomalie = nom_anomalie
+        anomalie.valeur_trouvee = valeur_trouvee
+        anomalie.save()
+        return anomalie
      
 class DataSplitInsertionFromFileFunctions:
     
@@ -680,7 +698,7 @@ class DBTypesDetection :
 
     def is_amount(text):
     
-        cleaned_text = text.replace(" ", "")
+        cleaned_text = str(text).replace(" ", "")
         currencies = DBTypesDetection.get_currencies("https://api.currencyfreaks.com/v2.0/supported-currencies")
         
         currencies_symboles = (CurrencySymbols.get_symbol(currency) for currency in currencies)
@@ -847,6 +865,7 @@ class DBTypesDetection :
         result = {}
         for column in df.columns:
 
+
             _, numeric_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_numeric)
             if numeric_percentage > 60.0:
                 result[column] = {'numerique': numeric_percentage}
@@ -908,7 +927,7 @@ class DataGuardianDiagnostic :
         # Liste des types de données considérés comme numériques
     types_numeriques = ['smallint', 'integer', 'bigint', 'decimal', 'numeric', 'real', 'double precision', 'smallserial', 'serial', 'bigserial']
    
-    @transaction.atomic
+    # @transaction.atomic
     def insert_diagnostic_details(id_ligne, nom_colonne, valeur, anomalie, commentaire, code_correction,diagnostic,type_colonne):
         try:
             detail = DiagnosticDetail()
@@ -920,6 +939,7 @@ class DataGuardianDiagnostic :
             detail.code_correction = code_correction
             detail.diagnostic = diagnostic
             detail.type_colonne = type_colonne
+            print(detail.id_ligne, detail.nom_colonne, detail.valeur,detail.anomalie, detail.diagnostic)
             detail.save()
             return 0
         except Exception as e:

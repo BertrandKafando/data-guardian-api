@@ -1531,3 +1531,35 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+
+
+-- update function
+CREATE OR REPLACE FUNCTION DiagnoticDeNULLs (NOMTAB VARCHAR, Nom_COL VARCHAR) RETURNS
+TABLE(id_ligne INTEGER, Nom_colonne TEXT)
+AS
+$$
+DECLARE
+Q VARCHAR(2000);
+NbValNulles INTEGER;
+BEGIN
+Q := 'SELECT ' || NOMTAB || '_id, ''' || Nom_COL || ''' FROM ' || NOMTAB || ' WHERE ' || Nom_COL || ' IS NULL';
+IF (TypeDesColonne(NOMTAB, NOM_COL) = 'character varying') THEN
+Q := Q || ' OR (' || Nom_COL || ' IN (''MISSINGVALUE'',''NULL'', ''-'', ''='', ''!'', ''?'',''nan'', ''''))';
+END IF;
+RETURN QUERY EXECUTE Q;
+END;
+$$ LANGUAGE plpgsql;
+
+-- FUNCTION 3:
+DROP FUNCTION IF EXISTS values_not_matching_regex(VARCHAR, VARCHAR, VARCHAR);
+CREATE OR REPLACE FUNCTION values_not_matching_regex(NOMTAB VARCHAR, NOMCOL VARCHAR, REGEX VARCHAR)
+RETURNS TABLE (id_ligne INTEGER, nom_colonne TEXT, valeur_colonne VARCHAR)
+AS
+$$
+DECLARE
+Q VARCHAR (1000);
+BEGIN
+Q := 'SELECT ' || NOMTAB || '_id, ''' || NOMCOL || ''', ' || NOMCOL || ' FROM ' || NOMTAB || ' WHERE ' || NOMCOL || ' !~ ''' || REGEX || '''';
+RETURN QUERY EXECUTE Q;
+END;
+$$ LANGUAGE plpgsql;
