@@ -660,8 +660,6 @@ class DataInsertionStep:
 
 
 
-
-
 class DBTypesDetection :
 
     BASE_DIR = settings.BASE_DIR
@@ -1043,9 +1041,8 @@ class DataGuardianDiagnostic :
             print("La partie 'X' de la chaîne ne contient pas un nombre valide.")
             return None
 
-
-
 class SemanticFunctions:
+
     def check_constraints_for_semantics_types(col_instance, nom_bd, diagnostic, infos_diagnostic):
         contraintes = MetaTousContraintes.objects.filter(category__icontains=infos_diagnostic["categorie"])
         for constraint in contraintes : 
@@ -1126,4 +1123,94 @@ class SemanticFunctions:
         return col_instance
 
 
+    def replace_outliers(df, column, outliers, method='moyenne'):
         
+        if method == 'mediane':
+            replacement_value = df[column].median()
+        else:
+            replacement_value = df[column].mean()
+        
+        df[column] = df[column].apply(
+            lambda x: replacement_value if x in outliers else x)
+        
+        return df
+    
+
+    def convert_date_format(date_str, output_format="%m-%d-%Y", input_format=None):
+
+        if input_format:
+            try:
+                date_obj = datetime.strptime(date_str, input_format)
+                return date_obj.strftime(output_format)
+            except ValueError:
+                return "Format de date inconnu ou incorrect."
+        else:
+            
+            possible_formats = [
+                "%Y-%m-%d", "%d-%m-%Y", "%m-%d-%Y",
+                "%Y/%m/%d", "%d/%m/%Y", "%m/%d/%Y",
+                "%Y.%m.%d", "%d.%m.%Y", "%m.%d.%Y",
+                "%Y %m %d", "%d %m %Y", "%m %d %Y",
+                "%b %d, %Y", "%d %b %Y",
+            ]
+            
+            for format_ in possible_formats :
+                try:
+                    date_obj = datetime.strptime(date_str, format_)
+                    return date_obj.strftime(output_format)
+                except ValueError:
+                    continue 
+            
+            return "Format de date inconnu."
+        
+
+    def remove_currency_symbol(amount):
+
+        numeric_amount = re.sub(r'[^\d.]+', '', amount)
+        return numeric_amount
+    
+
+    def convert_currency(amount, conversion_rate, new_currency_symbol=None):
+
+        numeric_amount = float(re.sub(r'[^\d.]+', '', amount))
+        converted_amount = numeric_amount * conversion_rate
+        
+        if new_currency_symbol:
+            return f"{new_currency_symbol}{converted_amount:,.2f}"
+        else:
+            return f"{converted_amount:,.2f}"
+        
+
+    def drop_duplicates_column(df):
+        
+        colonnes_a_supprimer = set()
+        for i in range(len(df.columns)):
+            for j in range(i+1, len(df.columns)):
+                if df.iloc[:,i].equals(df.iloc[:,j]):
+                    colonnes_a_supprimer.add(df.columns[j])
+        df_reduit = df.drop(columns=colonnes_a_supprimer)
+        return df_reduit
+        
+
+
+    #TODO : fonction pour corriger l'écriture des pays et villes (ref : GetAnomaliesSuggestions, GetAnomaliesBasedOn, TranslateCountryName)
+    #TODO : fonction pour corriger les numéros de téléphone ou les supprimer (ref : table des faits)
+    #TODO : fonction pour corriger les adresses email : supprimer ou pas
+        
+
+    def apply_correction(df, nom_colonne, fonction_correction):
+        
+        """
+        Applique une fonction de correction sur une colonne spécifique d'un DataFrame.
+
+        Parameters:
+        - df (pd.DataFrame): Le DataFrame sur lequel appliquer la correction.
+        - nom_colonne (str): Le nom de la colonne sur laquelle appliquer la fonction de correction.
+        - fonction_correction (function): La fonction de correction à appliquer sur la colonne.
+
+        Returns:
+        pd.DataFrame: Le DataFrame avec la colonne corrigée.
+        """
+        
+        df[nom_colonne] = df[nom_colonne].apply(fonction_correction)
+        return df

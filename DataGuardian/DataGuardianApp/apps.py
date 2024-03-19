@@ -41,7 +41,6 @@ class DataguardianappConfig(AppConfig):
                 path = os.path.join(BASE_DIR, 'DataGuardian\DataGuardianApp\db_configs\\data_types.json')
 
                 with open(path) as f:
-                with open(path) as f:
                     config_data = json.load(f)
 
 
