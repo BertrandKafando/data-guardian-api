@@ -16,12 +16,112 @@
             "commentaire": "Pour detecter des caracteres speciaux"
         },
         "specifiques":{
-            "EMAIL" : {
-                "nom contrainte" : "caracteres speciaux sur email",
-                "type": "email",
-                "definition": "[^a-zA-Z0-9_@.]",
-                "commentaire": "Pour detecter des caracteres speciaux dans les emails en excluant l'arobase et le point"
-            }
+            "EMAIL" : [
+                {
+                    "nom contrainte" : "caracteres speciaux sur email",
+                    "type": "email",
+                    "definition": "[^a-zA-Z0-9_@.]",
+                    "commentaire": "Pour detecter des caracteres speciaux dans les emails en excluant l'arobase et le point"
+                },
+                {
+                    "nom contrainte" : "domaine invalide",
+                    "type": "email",
+                    "definition": "(?:[^\\s@]+@(?:(?:[^\\s@.]+\\.)+[^\\s@.]{2,}|[^\\s@.]*[^-\\s\\w.][^\\s@.]*|[^\\s@.]*[-.]{2,}[^\\s@.]*|[^\\s@.]*\\.[^\\s@.]*\\.))",
+                    "commentaire": "Pour detecter un domaine invalide (extension, caractères, incohérence)"
+                },
+                {
+                    "nom contrainte" : "dépasse la longueur maximale",
+                    "type": "montant",
+                    "definition": "^.{255,}$",
+                    "commentaire": "Pour detecter une adresse de longueur supérieure à 254"
+                }
+            ],
+            "MONTANT" : [
+                {
+                    "nom contrainte" : "présence de délimiteurs",
+                    "type": "montant",
+                    "definition": "^(?:(?:\\d{1,3})(?:(?:,\\d{3})*(?:\\.\\d*)?|(?:\\.\\d{3})*(?:,\\d*)?))$",
+                    "commentaire": "Pour detecter la presence de délimiteurs avec des virgules"
+                },
+                {
+                    "nom contrainte" : "plusieurs symboles sur la monnaie",
+                    "type": "montant",
+                    "definition": "[0-9]+(?:[.,][0-9]+)*([^\\w\\s.,-`]){2,}",
+                    "commentaire": "Pour detecter la presence de plusieurs symbole sur une monnaie"
+                },
+                {
+                    "nom contrainte" : "délimiteurs non uniformes",
+                    "type": "montant",
+                    "definition": "^(?:(\\d{1,3}(\\.\\d{3})*,\\d{2,3})|(\\d{1,3}(,\\d{3})*\\.\\d{2,3}))$",
+                    "commentaire": "Pour detecter la presence de plusieurs délimiteurs dans le montant"
+                },
+                {
+                    "nom contrainte" : "délimiteurs avec virgules",
+                    "type": "montant",
+                    "definition": "^(\\d{1,3})(,\\d{3})*$",
+                    "commentaire": "Pour detecter la presence de délimiteurs avec des virgules"
+                }
+            ],
+            "TELEPHONE" : [
+                {
+                    "nom contrainte" : "présence d'indicateur dans le numéro",
+                    "type": "telephone",
+                    "definition": "^\\+?\\d{1,3}[-.\\s]?\\d{1,15}$",
+                    "commentaire": "Pour detecter la presence d'indicateur dans le numéro"
+                },
+                {
+                    "nom contrainte" : "présence de caractères invalides dans le numero",
+                    "type": "telephone",
+                    "definition": "[^0-9 \\-()+]",
+                    "commentaire": "Pour detecter la presence d'indicateur dans le numéro"
+                },
+                {
+                    "nom contrainte" : "présence de délimiteurs invalides",
+                    "type": "telephone",
+                    "definition": "[^0-9 \\-.]",
+                    "commentaire": "Pour detecter la presence de délimiteurs invalides dans le numéro de téléphone"
+                }
+            ],
+            "DATE" : [
+                {
+                    "nom contrainte" : "détecte une plage irrealiste pour le format AAAA-MM-JJ",
+                    "type": "date",
+                    "definition": "(?:[^\\d]|^)(?!0000|9999)(\\d{4})-(?:0[13-9]|1[0-2])-(?:3[2-9]|[4-9]\\d)|(?:[^\\d]|^)(\\d{4})-(?:0[469]|11)-(?:31|[4-9]\\d)|(?:[^\\d]|^)(\\d{4})-02-(?:3[0-9]|[4-9]\\d)",
+                    "commentaire": "Pour detecter une plage irrealiste pour le format AAAA-MM-JJ"
+                },
+                {
+                    "nom contrainte" : "détecte une plage irrealiste pour le format MM-DD-YYYY",
+                    "type": "date",
+                    "definition": "(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])-(?!(0000|000[1-9]|00[1-9][0-9]|0[1-9][0-9]{2}|[1-9][0-9]{3}))(?!02-3[01]|02-30|04-3[01]|06-3[01]|09-3[01]|11-3[01]|02-29|04-31|06-31|09-31|11-31)\\d{4}",
+                    "commentaire": "Pour detecter une plage irrealiste pour le format MM-DD-YYYY"
+                },
+                {
+                    "nom contrainte" : "détecte une plage irrealiste pour les formats DD/MM/YY DD/MM/YYYY",
+                    "type": "date",
+                    "definition": "(0[1-9]|[12][0-9]|3[01])\/(0[1-9]|1[0-2])\/(?!(00|0[1-9])\\d{2}|[1-9]\\d{3})\\d{2,4}",
+                    "commentaire": "Pour detecter une plage irrealiste pour les formats DD/MM/YY DD/MM/YYYY"
+                },
+                {
+                    "nom contrainte" : "détecte une plage irrealiste pour les formats DD MMM YY",
+                    "type": "date",
+                    "definition": "(0[1-9]|[12][0-9]|3[01])\\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\\s+(?!(00|0[1-9])\\d{2}|[1-9]\\d{3})\\d{2}",
+                    "commentaire": "Pour detecter une plage irrealiste pour les formats DD MMM YY"
+                },
+                {
+                    "nom contrainte" : "détecte une erreur de délimiteur dans la date",
+                    "type": "date",
+                    "definition": "\b(?:(?:0?[1-9]|1[0-2])[-/.](?:0?[1-9]|[12][0-9]|3[01])|(?:0?[1-9]|[12][0-9]|3[01])[-/.](?:0?[1-9]|1[0-2]))[-/.](?:\\d{2}|\\d{4})\b",
+                    "commentaire": "détecte une erreur de délimiteur dans la date"
+                }
+            ],
+            "NUMERIQUE" : [
+                {
+                    "nom contrainte" : "détecte une erreur de format dans le chiffre",
+                    "type": "numerique",
+                    "definition": "^\\d+(?:\\.\\d+)?$",
+                    "commentaire": "détecte une erreur de format dans le chiffre"
+                }
+            ]
         }
     },
     "semantiques" : {

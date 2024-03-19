@@ -253,7 +253,6 @@ class MetaTousContraintes(models.Model):
 
 class MetaAnomalie(models.Model):
     nom_anomalie = models.CharField(max_length=50)
-    
     valeur_trouvee = models.IntegerField(null=True, blank=True)
 
     def __str__(self):

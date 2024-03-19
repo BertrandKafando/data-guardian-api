@@ -40,7 +40,7 @@ class DataguardianappConfig(AppConfig):
 
                 path = os.path.join(BASE_DIR, 'DataGuardian\DataGuardianApp\db_configs\\data_types.json')
 
-                with open(f) as f:
+                with open(path) as f:
                     config_data = json.load(f)
 
 
@@ -49,14 +49,15 @@ class DataguardianappConfig(AppConfig):
                 if field_name == 'specifiques':
                     for type, constraints in field_info.items() :
 
-                        MetaTousContraintes.objects.get_or_create(
-                            nom_contrainte=constraints['nom contrainte'],
-                            category=type,
-                            contrainte=constraints['definition'],
-                            commentaire=constraints['commentaire']
-                        )
-                
+                        for constraint in constraints :
 
+                            MetaTousContraintes.objects.get_or_create(
+                                nom_contrainte=constraint['nom contrainte'],
+                                category=type,
+                                contrainte=constraint['definition'],
+                                commentaire=constraint['commentaire']
+                            )
+                
                 if 'type' in field_info :
 
                     MetaTousContraintes.objects.get_or_create(
@@ -134,14 +135,16 @@ class DataguardianappConfig(AppConfig):
 def run_sql_scripts(sender, **kwargs):
 
     print("Exécution des scripts SQL pour la création des fonctions et procédures...")
-    if OS_PLATFORM =="MACOS" or OS_PLATFORM =="LINUX": 
+    if OS_PLATFORM == "MACOS" or OS_PLATFORM == "LINUX": 
         functions_script_path = os.path.join(BASE_DIR, "DataGuardian/DataGuardianApp/db_configs/functions.sql")
         test_data_script_path = os.path.join(BASE_DIR, "DataGuardian/DataGuardianApp/db_configs/test_data.sql")
+        base_de_faits_path = os.path.join(BASE_DIR, "DataGuardian/DataGuardianApp/db_configs/base_faits.sql")
 
-    if OS_PLATFORM =="WINDOWS" : 
+    if OS_PLATFORM == "WINDOWS" : 
 
         functions_script_path = os.path.join(BASE_DIR, "DataGuardian\DataGuardianApp\db_configs\\functions.sql")
         test_data_script_path = os.path.join(BASE_DIR, "DataGuardian\DataGuardianApp\db_configs\\test_data.sql")
+        base_de_faits_path = os.path.join(BASE_DIR, "DataGuardian\DataGuardianApp\db_configs\\base_faits.sql")
 
     try:
         if os.path.isfile(functions_script_path):
@@ -150,5 +153,9 @@ def run_sql_scripts(sender, **kwargs):
         if os.path.isfile(test_data_script_path):
             subprocess.run(['psql', '-U', env("POSTGRES_USER"), '-d', env("POSTGRES_DB"), '-a', '-f', test_data_script_path])
             print("Création des données de test réalisé avec succès.")
+        if os.path.isfile(base_de_faits_path):
+            subprocess.run(['psql', '-U', env("POSTGRES_USER"), '-d', env("POSTGRES_DB"), '-a', '-f', base_de_faits_path])
+            print("Création de la table de faits.")
+
     except Exception as e:
         print(f"Erreur lors de l'exécution des scripts SQL : {e}")
