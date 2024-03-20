@@ -2638,3 +2638,26 @@ CREATE INDEX idx_nom_ville_fr ON bf_ville(nom_ville_fr);
 CREATE INDEX idx_nom_ville_en ON bf_ville(nom_ville_en);
 CREATE INDEX idx_ville_nom_pays_fr ON bf_ville(nom_pays_fr);
 
+
+---------------- groupe sanguin -------------------------------
+DROP TABLE IF EXISTS bf_groupe_sanguin CASCADE;
+CREATE TABLE bf_groupe_sanguin (
+    id SERIAL PRIMARY KEY,
+    groupe VARCHAR(4) NOT NULL
+);
+
+INSERT INTO bf_groupe_sanguin (groupe) VALUES 
+('A'),
+('A+'),
+('A-'),
+('B'),
+('B+'),
+('B-'),
+('AB'),
+('AB+'),
+('AB-'),
+('O'),
+('O+'),
+('O-');
+
+CREATE INDEX idx_groupe_sanguin ON bf_groupe_sanguin(groupe);

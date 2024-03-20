@@ -260,18 +260,48 @@ class DBFunctions:
                     col_instance = SemanticFunctions.check_constraints_for_semantics_types(col_instance, nom_bd, diagnostic, infos_diagnostic)
 
 
-                elif columns_types[col_instance.nom_colonne] == "groupe_sanguin":
-                    pass
-
                 elif columns_types[col_instance.nom_colonne] == "pays":
-                    pass
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_PAYS',
+                        'anomalie': 'PAYS_INCONNU_OU_MAL_ECRIT',
+                        'commentaire' : "Ce pays est non reconnu dans notre base des faits", 
+                        'code_correction': "CODE_CORRECTION_PAYS",
+                        'type_donnee': 'pays'
+                    }
+                    SemanticFunctions.check_anomalies_based_on(col_instance, nom_bd, diagnostic, infos_diagnostic=infos_diagnostic, base_faits='bf_pays_continent', col_base_faits='nom_pays_fr')
+
+                    
 
                 elif columns_types[col_instance.nom_colonne] == "ville":
-                    pass
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_VILLE',
+                        'anomalie': 'VILLE_INCONNU_OU_MAL_ECRIT',
+                        'commentaire' : "Cette ville est non reconnu dans notre base des faits", 
+                        'code_correction': "CODE_CORRECTION_VILLE",
+                        'type_donnee': 'ville'
+                    }
+                    SemanticFunctions.check_anomalies_based_on(col_instance, nom_bd, diagnostic, infos_diagnostic=infos_diagnostic, base_faits='bf_ville', col_base_faits='nom_ville_fr')
 
                 elif columns_types[col_instance.nom_colonne] == "continent":
-                    pass
-                    
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_CONTINENT',
+                        'anomalie': 'CONTINENT_INCONNU_OU_MAL_ECRIT',
+                        'commentaire' : "Ce continent est non reconnu dans notre base des faits", 
+                        'code_correction': "CODE_CORRECTION_CONTINENT",
+                        'type_donnee': 'ville'
+                    }
+                    SemanticFunctions.check_anomalies_based_on(col_instance, nom_bd, diagnostic, infos_diagnostic=infos_diagnostic, base_faits='bf_pays_continent', col_base_faits='nom_continent_fr')
+
+                elif columns_types[col_instance.nom_colonne] == "groupe_sanguin":
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_GROUPE_SANGUIN',
+                        'anomalie': 'GROUPE_SANGUIN_INCONNU',
+                        'commentaire' : "Ce groupe sanguin est non reconnu dans notre base des faits", 
+                        'code_correction': "CODE_CORRECTION_GROUPE_SANGUIN",
+                        'type_donnee': 'groupe_sanguin'
+                    }
+                    SemanticFunctions.check_anomalies_based_on(col_instance, nom_bd, diagnostic, infos_diagnostic=infos_diagnostic, base_faits='bf_groupe_sanguin', col_base_faits='groupe')
+
                 else:
                     pass
                    
@@ -376,6 +406,7 @@ class DBFunctions:
         return new_columns_instance
 
 
+
     def get_other_stats(columns, nom_bd) : 
         new_columns_instance = list()
         for col_instance in columns :
@@ -420,7 +451,7 @@ class DBFunctions:
             score += (nombre_valeurs_manquantes  + nombre_outliers + nombre_anomalies)/nombre_valeurs
             # a voir (ajouter des pondérations)
 
-        score = score * 100 / len(columns)
+        score = score * 100 / (len(columns)-1)
         #save it 
         score_diagnostic = ScoreDiagnostic()
         score_diagnostic.valeur = 100-score
@@ -1059,6 +1090,19 @@ class SemanticFunctions:
         col_instance.contraintes.add(*contraintes)
         col_instance = DBFunctions.save_number_of_anomalie_in_meta_colonne(col_instance)
         return col_instance
+    
+    def check_anomalies_based_on(col_instance, nom_bd, diagnostic, infos_diagnostic, base_faits, col_base_faits):
+        anomalies_based_on = DBFunctions.exec_function_postgresql_get_all('GetAnomaliesBasedOn', nom_bd, col_instance.nom_colonne, base_faits, col_base_faits)
+        count_anomalies = len(anomalies_based_on)
+        #insérer le nombre d'anomalies détectés
+        if count_anomalies > 0 :
+            anomalie = DBFunctions.save_number_of_anomalies("Pays non reconnu", count_anomalies)
+            col_instance.meta_anomalie.add(anomalie)
+        #insérer les résultats dans détail diagnostic
+        for result in anomalies_based_on:
+            DataGuardianDiagnostic.insert_diagnostic_details(result[0], col_instance.nom_colonne, result[1], infos_diagnostic["anomalie"], infos_diagnostic["commentaire"], infos_diagnostic["code_correction"], diagnostic, infos_diagnostic["type_donnee"])
+
+
     
     def check_constraints_for_unknown(col_instance, nom_bd, diagnostic):
         contraintes = MetaTousContraintes.objects.filter(category__icontains="string")
