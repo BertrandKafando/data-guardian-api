@@ -2,17 +2,17 @@
     "generales" : {
         "Espaces superflus": {
             "type": "string",
-            "definition": "^( ){2,}$",
+            "definition": "\\s{2,}",
             "commentaire": "pour rechercher des espaces superflus"
         },
         "Repetitions de trois lettres consecutives": {
             "type": "string",
-            "definition": "^(.)\\1\\1$",
+            "definition": "([a-zA-Z])\\1{2,}",
             "commentaire": "Repetitions de trois lettres consecutives"
         },
         "Caracteres speciaux": {
             "type": "string",
-            "definition": "^[[:punct:]]$",
+            "definition": "[^a-zA-Z0-9\\s]",
             "commentaire": "Pour detecter des caracteres speciaux"
         },
         "specifiques":{
@@ -31,7 +31,7 @@
                 },
                 {
                     "nom contrainte" : "dépasse la longueur maximale",
-                    "type": "montant",
+                    "type": "email",
                     "definition": "^.{255,}$",
                     "commentaire": "Pour detecter une adresse de longueur supérieure à 254"
                 }
@@ -149,6 +149,16 @@
             "type": "string",
             "definition": "\b(rue|avenue|boulevard|place|chemin|allée|voie|impasse|square|route|bvd|av|rd)\b",
             "commentaire": "Pour detecter une adresse"
+        },
+        "TYPE_GROUPE_SANGUIN": {
+            "type": "groupe sanguin",
+            "definition": "A\\+|A-|B\\+|B-|AB\\+|AB-|O\\+|O-",
+            "commentaire": "Pour detecter un groupe sanguin"
+        },
+        "TYPE_CIVILITE": {
+            "type": "civilité",
+            "definition": "Mme|Mlle|Mr|Dr|Pr|Monsieur|MONSIEUR|Madame|MADAME|Mademoiselle|MADEMOISELLE",
+            "commentaire": "Pour detecter la civilité"
         }
     }
   }

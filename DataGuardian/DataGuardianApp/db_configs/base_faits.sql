@@ -2661,3 +2661,24 @@ INSERT INTO bf_groupe_sanguin (groupe) VALUES
 ('O-');
 
 CREATE INDEX idx_groupe_sanguin ON bf_groupe_sanguin(groupe);
+
+
+
+---------------- civilitye -------------------------------
+DROP TABLE IF EXISTS bf_civilite CASCADE;
+CREATE TABLE bf_civilite (
+    id SERIAL PRIMARY KEY,
+    civilite VARCHAR(15) NOT NULL
+);
+
+INSERT INTO bf_civilite(civilite) VALUES 
+('Mr'),
+('Mme'),
+('Mlle'),
+('Dr'),
+('Pr'),
+('Monsieur'),
+('Madame'),
+('Mademoiselle');
+
+CREATE INDEX idx_bf_civilite ON bf_civilite(civilite);
