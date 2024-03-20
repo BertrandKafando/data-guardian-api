@@ -723,13 +723,20 @@ class DiagnosticDetailViewSet(ModelViewSet):
 
     def get_queryset(self):
         
-        diagnostic_id = self.request.query_params.get('diagnostic_id')
+       bd_id = self.request.query_params.get('bd_id')
+       print("bd",bd_id)
+       if bd_id:
+           bd = BaseDeDonnees.objects.filter(id=bd_id).first()
+           diagnostic = Diagnostic.objects.filter(base_de_donnees=bd).first()
+           print("diagnostic",diagnostic)
+           diagnostic_id = diagnostic.id
+           print(diagnostic_id)
 
-        if diagnostic_id:
-            queryset = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id)
-        else:
-            queryset = DiagnosticDetail.objects.all()
-        return queryset
+           if diagnostic_id:
+             queryset = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id)
+           else:
+                queryset = DiagnosticDetail.objects.all()
+           return queryset
 
 
 class GetUserDataView(APIView):
@@ -746,17 +753,26 @@ class GetUserDataView(APIView):
         from sqlalchemy import create_engine, text
         from urllib.parse import quote
 
-        diagnostic_id = self.request.query_params.get('diagnostic_id')
+        db_id = self.request.query_params.get('db_id')
+        #diagnostic_id = self.request.query_params.get('diagnostic_id')
 
-        if diagnostic_id :
+        if db_id :
 
-            user_db = Diagnostic.objects.filter(id=diagnostic_id).first().base_de_donnees
+            user_db = BaseDeDonnees.objects.filter(id=db_id).first()
+            if user_db:
+                pwd = quote(env('POSTGRES_LOCAL_DB_PASSWORD'))  
+                connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:5432/{env('POSTGRES_DB')}"
+                engine = create_engine(connection_string)
+                conn = engine.connect()
+                query = text(f'SELECT * FROM {user_db.nom_base_de_donnees}')
+                df = pd.read_sql_query(query, conn)
 
-            pwd = quote(env('POSTGRES_LOCAL_DB_PASSWORD'))  
-            connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:5432/{env('POSTGRES_DB')}"
-            engine = create_engine(connection_string)
-            conn = engine.connect()
-            query = text(f'SELECT * FROM {user_db.nom_base_de_donnees}')
-            df = pd.read_sql_query(query, conn)
+                # Convertir le DataFrame en chaîne JSON, puis en objet Python
+                data_json = df.to_json(orient='records', lines=False)
+                data = json.loads(data_json)
 
-        return Response({'detail': df.to_json(orient='records', lines=False)},status=status.HTTP_200_OK)
+                return Response(data, status=status.HTTP_200_OK)
+            else:
+                return Response({'detail': 'Base de données introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({'detail': 'Paramètre db_id manquant.'}, status=status.HTTP_400_BAD_REQUEST)
