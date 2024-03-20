@@ -178,7 +178,8 @@ class DBFunctions:
                 if result_type_col[0] :
                     meta_colonne.type_donnees = result_type_col[0]
                     type_colonne = result_type_col[0]
-        
+
+
             #insert into DiagnosticDetail
             for result in res_diagnostic_nulls:
                 DataGuardianDiagnostic.insert_diagnostic_details(result[0], col, None, "VALEUR_NULL", "La valeur est NULL", "VALEUR_NULL", diagnostic, type_colonne)
@@ -216,7 +217,7 @@ class DBFunctions:
                         'code_correction': "CODE_CORRECTION_NUMERIQUE",
                         'type_donnee': 'numerique'
                     }
-                    col_instance = SemanticFunctions.check_constraints_for_semantics_types(col_instance, nom_bd, diagnostic, infos_diagnostic)
+                    col_instance = SemanticFunctions.check_constraints_for_numeriques_type(col_instance, nom_bd, diagnostic, infos_diagnostic)
                      
                 #type semantique email
                 elif columns_types[col_instance.nom_colonne] == "email":
@@ -227,7 +228,8 @@ class DBFunctions:
                         'code_correction': "CODE_CORRECTION_EMAIL",
                         'type_donnee': 'email'
                     }
-                    col_instance = SemanticFunctions.check_constraints_for_semantics_types(col_instance, nom_bd, diagnostic, infos_diagnostic)
+                    #col_instance = SemanticFunctions.check_constraints_for_semantics_types(col_instance, nom_bd, diagnostic, infos_diagnostic)
+                    col_instance = SemanticFunctions.check_constraints_for_email_type(col_instance, nom_bd, diagnostic, infos_diagnostic)
                 
                 #type semantique date
                 elif columns_types[col_instance.nom_colonne] == "date":
@@ -276,7 +278,7 @@ class DBFunctions:
                     infos_diagnostic = {
                         'categorie' : 'TYPE_VILLE',
                         'anomalie': 'VILLE_INCONNU_OU_MAL_ECRIT',
-                        'commentaire' : "Cette ville est non reconnu dans notre base des faits", 
+                        'commentaire' : "ville non reconnu dans notre base des faits", 
                         'code_correction': "CODE_CORRECTION_VILLE",
                         'type_donnee': 'ville'
                     }
@@ -302,10 +304,20 @@ class DBFunctions:
                     }
                     SemanticFunctions.check_anomalies_based_on(col_instance, nom_bd, diagnostic, infos_diagnostic=infos_diagnostic, base_faits='bf_groupe_sanguin', col_base_faits='groupe')
 
+                elif columns_types[col_instance.nom_colonne] == "civilite":
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_CIVILITE',
+                        'anomalie': 'CIVILITE_INCONNU',
+                        'commentaire' : "civilité non reconnue dans notre base des faits", 
+                        'code_correction': "CODE_CORRECTION_CIVILITE",
+                        'type_donnee': 'civilite'
+                    }
+                    SemanticFunctions.check_anomalies_based_on(col_instance, nom_bd, diagnostic, infos_diagnostic=infos_diagnostic, base_faits='bf_civilite', col_base_faits='civilite')
+
                 else:
                     pass
                    
-                new_columns_instance.append(col_instance)
+            new_columns_instance.append(col_instance)
 
         return new_columns_instance
 
@@ -342,30 +354,50 @@ class DBFunctions:
 
         if 0 in result_doublons : 
             if result_doublons[0] == 'integer' :
-                print(result_doublons)
                 table.nombre_doublons = result_doublons[0]
                 table.save()
 
         return result_doublons
     
+    def count_doublons_with_pandas(table, df, nom_bd, diagnostic) : 
+        df_copy = df.copy()
+        df_copy = df_copy[df_copy.columns[1:]]
+        df_doublons = df_copy.duplicated()
+        
+        results = df[df_doublons]
+
+        for index, row in results.iterrows():
+            DataGuardianDiagnostic.insert_diagnostic_details(row[f"{nom_bd}_id"], "Ne dépend pas de la colonne", "", "DOUBLONS", "cette ligne est un doublons", "CODE_CORRECTION_DOUBLONS", diagnostic, "")
+
+
+        count = df_doublons.sum()
+        table.nombre_doublons = count
+        table.save()
+        return count
     
-    def check_outliers(columns, nom_bd,connected_user,df, columns_types={}) : 
+    
+    def check_outliers(columns, nom_bd,diagnostic,df, columns_types={}) : 
 
         new_columns_instance = list()
         #supprimer la colonne avec le nom_bd+ _id
         columns = [col for col in columns if col.nom_colonne != f"{nom_bd}_id"]
         for col_instance in columns :
 
-            result_type_col = DBFunctions.executer_fonction_postgresql('TypeDesColonne',str(nom_bd).lower(), str(col_instance.nom_colonne).lower())
             col_instance.nombre_outliers = 0
-            if result_type_col[0] in DataGuardianDiagnostic.types_numeriques:
+            if col_instance.type_donnees in DataGuardianDiagnostic.types_numeriques:
                 id_col_name= str(nom_bd).lower() + "_id"
-                res =DataGuardianDiagnostic.chechk_column_outliers_python(df, str(col_instance.nom_colonne), id_col_name)
-                print("outliers",res)
-                result_outliers = len(res)
-                col_instance.nombre_outliers = result_outliers
+                res = DataGuardianDiagnostic.chechk_column_outliers_python(df, str(col_instance.nom_colonne), id_col_name)
+                nombre_outliers = len(res)
+                col_instance.nombre_outliers = nombre_outliers
 
-            col_instance.save()
+                for outlier in res: 
+                    DataGuardianDiagnostic.insert_diagnostic_details(outlier[0], col_instance.nom_colonne, outlier[1], "DETECTION_VALEUR_ABERANTE", "cette valeur a été détecté comme une valeur aberante", "CODE_CORRECTION_VALEUR_ABERRANTE", diagnostic, "integer")
+                
+                if nombre_outliers > 0 :
+                    anomalie = DBFunctions.save_number_of_anomalies("Valeurs abérantes", nombre_outliers)
+                    col_instance.meta_anomalie.add(anomalie)
+                col_instance.save()
+
             new_columns_instance.append(col_instance)
 
         return new_columns_instance
@@ -405,6 +437,16 @@ class DBFunctions:
                 
         return new_columns_instance
 
+    def updateType(columns, columns_types):
+        col_instances = list()
+        for column in columns:
+            if columns_types[column.nom_colonne] != 'UNKNOWN':
+                column.type_donnees = columns_types[column.nom_colonne]
+                column.save()
+        col_instances.append(column)
+
+        return col_instances
+            
 
 
     def get_other_stats(columns, nom_bd) : 
@@ -836,6 +878,36 @@ class DBTypesDetection :
         else :
             return False
         
+    def is_blood_group(chaine):
+
+        groupe_sanguin_meta = MetaTousContraintes.objects.filter(
+            category = 'TYPE_GROUPE_SANGUIN'
+        ).first()
+
+        regex = groupe_sanguin_meta.contrainte
+
+        if isinstance(chaine, str):
+            regex = re.compile(regex)    
+            res =   bool(regex.search(chaine))
+            return res
+        else :
+            return False
+        
+    def is_civility(chaine):
+
+        civility_meta = MetaTousContraintes.objects.filter(
+            category = 'TYPE_CIVILITE'
+        ).first()
+
+        regex = civility_meta.contrainte
+
+        if isinstance(chaine, str):
+            regex = re.compile(regex)    
+            res =   bool(regex.search(chaine))
+            return res
+        else :
+            return False
+        
 
     def is_email(chaine):
 
@@ -974,6 +1046,11 @@ class DBTypesDetection :
                 result[column] = {'email': email_percentage}
                 continue
 
+            _, civility_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_civility)
+            if email_percentage > 60.0:
+                result[column] = {'civilite': civility_percentage}
+                continue
+
             _, countries_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_country)
             if countries_percentage > 60.0:
                 result[column] = {'pays': countries_percentage}
@@ -989,15 +1066,23 @@ class DBTypesDetection :
                 result[column] = {'adresse': address_percentage}
                 continue
 
+            _, blood_group_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_blood_group)
+
+            if blood_group_percentage > 60.0:
+                result[column] = {'groupe_sanguin': blood_group_percentage}
+                continue
+
             result[column] = {
                 'pays': countries_percentage,
                 'ville': cities_percentage,
                 'adresse': address_percentage,
                 'email': email_percentage,
+                'civilite': civility_percentage,
                 'phone': phone_percentage,
                 'numerique': numeric_percentage,
                 'montant': amount_percentage,
-                'date': date_percentage
+                'date': date_percentage,
+                'groupe_sanguin': blood_group_percentage
             }
 
             final_types = DBTypesDetection.determine_majority_type(result)
@@ -1091,17 +1176,58 @@ class SemanticFunctions:
         col_instance = DBFunctions.save_number_of_anomalie_in_meta_colonne(col_instance)
         return col_instance
     
+    
+    
+    def check_constraints_for_email_type(col_instance, nom_bd, diagnostic, infos_diagnostic):
+        contraintes = MetaTousContraintes.objects.filter(category__icontains=infos_diagnostic["categorie"])
+        result_values_not_matching_regex = DBFunctions.exec_function_postgresql_get_all('email_not_matching_regex', nom_bd, col_instance.nom_colonne)
+        count_anomalies = len(result_values_not_matching_regex)
+        #insérer le nombre d'anomalies détectés
+        if count_anomalies > 0 :
+            anomalie = DBFunctions.save_number_of_anomalies("Emails incorrectes", count_anomalies)
+            col_instance.meta_anomalie.add(anomalie)
+        #insérer les résultats dans détail diagnostic
+        for result in result_values_not_matching_regex:
+            DataGuardianDiagnostic.insert_diagnostic_details(result[0], result[1], result[2], infos_diagnostic["anomalie"], infos_diagnostic["commentaire"], infos_diagnostic["code_correction"], diagnostic, infos_diagnostic["type_donnee"])
+                
+        col_instance.contraintes.add(*contraintes)
+        col_instance = DBFunctions.save_number_of_anomalie_in_meta_colonne(col_instance)
+        return col_instance
+    
+
+    def check_constraints_for_numeriques_type(col_instance, nom_bd, diagnostic, infos_diagnostic):
+        contraintes = MetaTousContraintes.objects.filter(category__icontains=infos_diagnostic["categorie"])
+        result_values_not_matching_regex = DBFunctions.exec_function_postgresql_get_all('numerique_not_matching_regex', nom_bd, col_instance.nom_colonne)
+        count_anomalies = len(result_values_not_matching_regex)
+        #insérer le nombre d'anomalies détectés
+        if count_anomalies > 0 :
+            anomalie = DBFunctions.save_number_of_anomalies("Caractères non numeriques", count_anomalies)
+            col_instance.meta_anomalie.add(anomalie)
+        #insérer les résultats dans détail diagnostic
+        for result in result_values_not_matching_regex:
+            DataGuardianDiagnostic.insert_diagnostic_details(result[0], result[1], result[2], infos_diagnostic["anomalie"], infos_diagnostic["commentaire"], infos_diagnostic["code_correction"], diagnostic, infos_diagnostic["type_donnee"])
+                
+        col_instance.contraintes.add(*contraintes)
+        col_instance = DBFunctions.save_number_of_anomalie_in_meta_colonne(col_instance)
+        return col_instance
+
+    
     def check_anomalies_based_on(col_instance, nom_bd, diagnostic, infos_diagnostic, base_faits, col_base_faits):
         anomalies_based_on = DBFunctions.exec_function_postgresql_get_all('GetAnomaliesBasedOn', nom_bd, col_instance.nom_colonne, base_faits, col_base_faits)
         count_anomalies = len(anomalies_based_on)
         #insérer le nombre d'anomalies détectés
         if count_anomalies > 0 :
-            anomalie = DBFunctions.save_number_of_anomalies("Pays non reconnu", count_anomalies)
+            anomalie = DBFunctions.save_number_of_anomalies(infos_diagnostic["commentaire"], count_anomalies)
             col_instance.meta_anomalie.add(anomalie)
         #insérer les résultats dans détail diagnostic
+        contraintes = MetaTousContraintes.objects.filter(category__icontains=infos_diagnostic["categorie"])
         for result in anomalies_based_on:
             DataGuardianDiagnostic.insert_diagnostic_details(result[0], col_instance.nom_colonne, result[1], infos_diagnostic["anomalie"], infos_diagnostic["commentaire"], infos_diagnostic["code_correction"], diagnostic, infos_diagnostic["type_donnee"])
+        
+        col_instance.contraintes.add(*contraintes)
+        col_instance = DBFunctions.save_number_of_anomalie_in_meta_colonne(col_instance)
 
+        return col_instance
 
     
     def check_constraints_for_unknown(col_instance, nom_bd, diagnostic):

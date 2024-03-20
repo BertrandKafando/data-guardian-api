@@ -1555,11 +1555,42 @@ $$
 DECLARE
     Q VARCHAR(1000);
 BEGIN
-    Q := 'SELECT ' || NOMTAB || '_id, ''' || NOMCOL || ''', ' || NOMCOL || ' FROM ' || NOMTAB || ' WHERE ' || NOMCOL || ' !~ ''' || REGEX || '''';
+    Q := 'SELECT ' || NOMTAB || '_id, ''' || NOMCOL || ''', ' || NOMCOL || ' FROM ' || NOMTAB || ' WHERE ' || NOMCOL || ' ~ ''' || REGEX || '''';
     RAISE NOTICE 'Query: %', Q; 
     RETURN QUERY EXECUTE Q;
 END;
 $$ LANGUAGE plpgsql;
+
+
+DROP FUNCTION IF EXISTS email_not_matching_regex(VARCHAR, VARCHAR);
+CREATE OR REPLACE FUNCTION email_not_matching_regex(NOMTAB VARCHAR, NOMCOL VARCHAR)
+RETURNS TABLE (id_ligne INTEGER, nom_colonne TEXT, valeur_colonne VARCHAR)
+AS
+$$
+DECLARE
+    Q VARCHAR(1000);
+BEGIN
+    Q := 'SELECT ' || NOMTAB || '_id, ''' || NOMCOL || ''', ' || NOMCOL || ' FROM ' || NOMTAB || ' WHERE LOWER(' || NOMCOL || ') !~ ''^([a-zA-Z0-9_\-]+\.)*[a-zA-Z0-9_\-]+@([a-zA-Z0-9_\-]+\.)+(com|org|edu|net|ca|au|coop|de|ee|es|fm|fr|gr|ie|in|it|jp|me|nl|nu|ru|uk|us|za)$''';
+    RAISE NOTICE 'Query: %', Q; 
+    RETURN QUERY EXECUTE Q;
+END;
+$$ LANGUAGE plpgsql;
+
+
+DROP FUNCTION IF EXISTS numerique_not_matching_regex(VARCHAR, VARCHAR);
+CREATE OR REPLACE FUNCTION numerique_not_matching_regex(NOMTAB VARCHAR, NOMCOL VARCHAR)
+RETURNS TABLE (id_ligne INTEGER, nom_colonne TEXT, valeur_colonne VARCHAR)
+AS
+$$
+DECLARE
+    Q VARCHAR(1000);
+BEGIN
+    Q := 'SELECT ' || NOMTAB || '_id, ''' || NOMCOL || ''', ' || NOMCOL || ' FROM ' || NOMTAB || ' WHERE LOWER(' || NOMCOL || ') !~ ''^-?\d*\.?\d+$''';
+    RAISE NOTICE 'Query: %', Q; 
+    RETURN QUERY EXECUTE Q;
+END;
+$$ LANGUAGE plpgsql;
+
 
 -- cette fonction permet de récupérer les anomalies en fonction d'une base de faits
 --paramètres:

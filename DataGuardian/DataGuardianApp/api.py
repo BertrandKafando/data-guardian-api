@@ -342,8 +342,9 @@ class DiagnosticViewSet(APIView):
 
 
                 """récupérer les types sémantiques"""
-                #columns_types =  DBTypesDetection.detect_columns_type(df)
-                columns_types = {'clients_20240318233743_id': 'UNKNOWN', 'Column_0': 'UNKNOWN', 'Column_1': 'UNKNOWN', 'Column_2': 'UNKNOWN', 'Column_3': 'UNKNOWN', 'Column_4': 'UNKNOWN', 'Column_5': 'numerique', 'Column_6': 'UNKNOWN', 'Column_7': 'numerique', 'Column_8': 'ville', 'Column_9': 'pays', 'Column_10': 'email', 'Column_11': 'phone', 'Column_12': 'date', 'Column_13': 'date', 'Column_14': 'UNKNOWN', 'Column_15': 'UNKNOWN'}
+                # columns_types =  DBTypesDetection.detect_columns_type(df[df.columns[1:]])
+                # print(columns_types)
+                columns_types = {'Column_0': 'UNKNOWN', 'Column_1': 'civilite', 'Column_2': 'UNKNOWN', 'Column_3': 'UNKNOWN', 'Column_4': 'UNKNOWN', 'Column_5': 'numerique', 'Column_6': 'UNKNOWN', 'Column_7': 'numerique', 'Column_8': 'ville', 'Column_9': 'pays', 'Column_10': 'email', 'Column_11': 'phone', 'Column_12': 'date', 'Column_13': 'date', 'Column_14': 'groupe_sanguin', 'Column_15': 'UNKNOWN'}
                 #columns_types = {'Employee': 'UNKNOWN', 'Amount':'numerique'}
 
                 #Diagnostic concernant tous les types
@@ -355,6 +356,7 @@ class DiagnosticViewSet(APIView):
                 if parametre_diagnostic == "VAL_MANQ" :
                     meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
                     DBFunctions.compute_score(meta_cols_instance_nulls, base_de_donnees)
+                    DBFunctions.updateType(meta_cols_instance_nulls, columns_types)
 
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS" :
@@ -365,6 +367,7 @@ class DiagnosticViewSet(APIView):
 
                     DBFunctions.compute_score(meta_cols_instances_with_constraints, base_de_donnees)
 
+                    DBFunctions.updateType(meta_cols_instances_with_constraints, columns_types)
 
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN" :
@@ -377,6 +380,7 @@ class DiagnosticViewSet(APIView):
 
                     DBFunctions.compute_score(meta_cols_instances_fn, base_de_donnees)
 
+                    DBFunctions.updateType(meta_cols_instances_fn, columns_types)
 
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN_DUPLICATIONS" :
@@ -389,11 +393,13 @@ class DiagnosticViewSet(APIView):
 
                     attributsCles = ', '.join(df.columns)
 
-                    DBFunctions.count_doublons(meta_table, nom_bd, attributsCles)
+                    DBFunctions.count_doublons_with_pandas(meta_table, df, nom_bd, diagnostic)
 
                     # TODO COUNT SIMILAIRE
 
                     DBFunctions.compute_score(meta_cols_instances_fn, base_de_donnees)
+
+                    DBFunctions.updateType(meta_cols_instances_fn, columns_types)
 
 
                 if parametre_diagnostic == "ALL" :                    
@@ -456,22 +462,27 @@ class DiagnosticViewSet(APIView):
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
                     meta_cols_repetitions = DBFunctions.check_cols_repetitions(meta_cols_instances_fn, nom_bd)
+                    
+                    meta_cols_outliers = DBFunctions.check_outliers(meta_cols_repetitions, nom_bd,diagnostic,df, columns_types)
+
 
                     attributsCles = ', '.join(df.columns)
 
-                    DBFunctions.count_doublons(meta_table, nom_bd, attributsCles)
-
-                    meta_cols_outliers = DBFunctions.check_outliers(meta_cols_repetitions, nom_bd,connected_user,df, columns_types)
-                    
+                    DBFunctions.count_doublons_with_pandas(meta_table, df, nom_bd, diagnostic)
                     
                     meta_cols_others = DBFunctions.get_other_stats(meta_cols_outliers, nom_bd)
+
                     meta_cols_general_constraints = DBFunctions.check_general_constraints(meta_cols_others, nom_bd, diagnostic, columns_types = columns_types)
 
 
                     DBFunctions.compute_score(meta_cols_general_constraints, base_de_donnees)
 
+                    DBFunctions.updateType(meta_cols_general_constraints, columns_types)
+
                     #DBFunctions.check_funtional_dependancies(meta_cols_others, nom_bd)
 
+
+                
 
                 diagnostic.status = Diagnostic.TERMINE
                 diagnostic_data = DiagnosticSerializer(diagnostic).data
