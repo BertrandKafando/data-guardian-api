@@ -730,3 +730,33 @@ class DiagnosticDetailViewSet(ModelViewSet):
         else:
             queryset = DiagnosticDetail.objects.all()
         return queryset
+
+
+class GetUserDataView(APIView):
+    http_method_names = ["head","get"]
+
+    # def get_permissions(self):
+    #     if self.request.method == "GET":
+    #         self.permission_classes = [IsAuthenticated]
+
+
+    def get(self, request, *args, **kwargs):
+
+
+        from sqlalchemy import create_engine, text
+        from urllib.parse import quote
+
+        diagnostic_id = self.request.query_params.get('diagnostic_id')
+
+        if diagnostic_id :
+
+            user_db = Diagnostic.objects.filter(id=diagnostic_id).first().base_de_donnees
+
+            pwd = quote(env('POSTGRES_LOCAL_DB_PASSWORD'))  
+            connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:5432/{env('POSTGRES_DB')}"
+            engine = create_engine(connection_string)
+            conn = engine.connect()
+            query = text(f'SELECT * FROM {user_db.nom_base_de_donnees}')
+            df = pd.read_sql_query(query, conn)
+
+        return Response({'detail': df.to_json(orient='records', lines=False)},status=status.HTTP_200_OK)

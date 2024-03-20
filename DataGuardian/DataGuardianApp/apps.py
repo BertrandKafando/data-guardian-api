@@ -78,56 +78,56 @@ class DataguardianappConfig(AppConfig):
                 )
 
 
-            # This is for tests purposes
-            # from .utils import Base64, DBFunctions, DBTypesDetection
+            #This is for tests purposes
+            from .utils import Base64, DBFunctions, DBTypesDetection
 
-            # from sqlalchemy import create_engine, text, Column, Integer, String, Text, Sequence, MetaData
-            # from urllib.parse import quote
-            # from sqlalchemy.ext.declarative import declarative_base
-            # from sqlalchemy.orm import sessionmaker
-            # from sqlalchemy.schema import DropTable
-            # from sqlalchemy.ext.compiler import compiles
+            from sqlalchemy import create_engine, text, Column, Integer, String, Text, Sequence, MetaData
+            from urllib.parse import quote
+            from sqlalchemy.ext.declarative import declarative_base
+            from sqlalchemy.orm import sessionmaker
+            from sqlalchemy.schema import DropTable
+            from sqlalchemy.ext.compiler import compiles
 
-            # @compiles(DropTable, "postgresql")
-            # def _compile_drop_table(element, compiler, **kwargs):
-            #     return compiler.visit_drop_table(element) + " CASCADE"
+            @compiles(DropTable, "postgresql")
+            def _compile_drop_table(element, compiler, **kwargs):
+                return compiler.visit_drop_table(element) + " CASCADE"
             
 
-            # pwd = quote(env('POSTGRES_LOCAL_DB_PASSWORD'))  
-            # connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:5432/{env('POSTGRES_DB')}"
-            # engine = create_engine(connection_string)
+            pwd = quote(env('POSTGRES_LOCAL_DB_PASSWORD'))  
+            connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:5432/{env('POSTGRES_DB')}"
+            engine = create_engine(connection_string)
 
-            # conn = engine.connect()
+            conn = engine.connect()
 
-            # query = text('SELECT * FROM CLIENTS')
+            query = text('SELECT * FROM CLIENTS')
 
-            # df = pd.read_sql_query(query, conn)
+            df = pd.read_sql_query(query, conn)
 
-            # detected_types = DBTypesDetection.detect_columns_type(df)
+            detected_types = DBTypesDetection.detect_columns_type(df)
 
-            # Base = declarative_base()
-            # metadata = MetaData(bind=engine)
+            Base = declarative_base()
+            metadata = MetaData(bind=engine)
 
-            # class TestResult(Base):
-            #     __tablename__ = 'test_result'
-            #     id = Column(Integer, Sequence('user_id_seq'), primary_key=True)
-            #     result = Column(Text)
+            class TestResult(Base):
+                __tablename__ = 'test_result'
+                id = Column(Integer, Sequence('user_id_seq'), primary_key=True)
+                result = Column(Text)
 
-            # if engine.dialect.has_table(engine, TestResult.__tablename__): 
-            #     TestResult.__table__.drop(engine)
+            if engine.dialect.has_table(engine, TestResult.__tablename__): 
+                TestResult.__table__.drop(engine)
 
-            # Base.metadata.create_all(engine)
+            Base.metadata.create_all(engine)
 
-            # Session = sessionmaker(bind=engine)
-            # session = Session()
+            Session = sessionmaker(bind=engine)
+            session = Session()
 
-            # result_str = str(detected_types)
+            result_str = str(detected_types)
 
-            # nouveau_resultat = TestResult(result=result_str)
+            nouveau_resultat = TestResult(result=result_str)
 
-            # session.add(nouveau_resultat)
-            # session.commit()
-            # End test
+            session.add(nouveau_resultat)
+            session.commit()
+            #End test
 
 
 
