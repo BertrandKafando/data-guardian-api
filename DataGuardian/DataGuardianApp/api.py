@@ -319,7 +319,7 @@ class DiagnosticViewSet(APIView):
                 base_de_donnees.separateur)
             # chemin_fichier, sep, header=False, table_name='', type_file='CSV'
             table_creation_result, df, db_name = DataInsertionStep.data_insertion(
-                chemin_fichier_csv,separateur, base_de_donnees.avec_entete, base_de_donnees.nom_base_de_donnees, base_de_donnees.type_fichier)
+                chemin_fichier_csv, separateur, base_de_donnees.avec_entete, base_de_donnees.nom_base_de_donnees, base_de_donnees.type_fichier)
 
 
             if table_creation_result == 0 :
@@ -340,18 +340,28 @@ class DiagnosticViewSet(APIView):
 
                 meta_table.save()
 
-                if parametre_diagnostic == "VAL_MANQ" :
 
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, db_name)
-                    
+                """récupérer les types sémantiques"""
+                #columns_types =  DBTypesDetection.detect_columns_type(df)
+                columns_types = {'clients_20240318233743_id': 'UNKNOWN', 'Column_0': 'UNKNOWN', 'Column_1': 'UNKNOWN', 'Column_2': 'UNKNOWN', 'Column_3': 'UNKNOWN', 'Column_4': 'UNKNOWN', 'Column_5': 'numerique', 'Column_6': 'UNKNOWN', 'Column_7': 'numerique', 'Column_8': 'ville', 'Column_9': 'pays', 'Column_10': 'email', 'Column_11': 'phone', 'Column_12': 'date', 'Column_13': 'date', 'Column_14': 'UNKNOWN', 'Column_15': 'UNKNOWN'}
+                #columns_types = {'Employee': 'UNKNOWN', 'Amount':'numerique'}
+
+                #Diagnostic concernant tous les types
+                #vérifier les valeurs manquantes
+                
+                #compter les doublons
+
+                #ok
+                if parametre_diagnostic == "VAL_MANQ" :
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
                     DBFunctions.compute_score(meta_cols_instance_nulls, base_de_donnees)
 
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS" :
 
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd)
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
 
-                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd,diagnostic=diagnostic, columns_types=columns_types, df=df)
 
                     DBFunctions.compute_score(meta_cols_instances_with_constraints, base_de_donnees)
 
@@ -359,9 +369,9 @@ class DiagnosticViewSet(APIView):
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN" :
 
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd)
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
 
-                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd,diagnostic=diagnostic, columns_types=columns_types, df=df)
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
@@ -371,9 +381,9 @@ class DiagnosticViewSet(APIView):
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN_DUPLICATIONS" :
 
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd)
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
 
-                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd,diagnostic=diagnostic, columns_types=columns_types, df=df)
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
@@ -386,8 +396,7 @@ class DiagnosticViewSet(APIView):
                     DBFunctions.compute_score(meta_cols_instances_fn, base_de_donnees)
 
 
-                if parametre_diagnostic == "ALL" :
-                    
+                if parametre_diagnostic == "ALL" :                    
                     # All
                     """
                     - check_nulls
@@ -396,8 +405,6 @@ class DiagnosticViewSet(APIView):
                     - repetition de colonnes
                     """
                     
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
-
                     # Number if
                     """
                     - check_outliers
@@ -441,18 +448,27 @@ class DiagnosticViewSet(APIView):
                         
                     """
 
-                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
+                    #all types
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
+
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd,diagnostic=diagnostic, columns_types=columns_types, df=df)
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
-                   
-                    meta_cols_outliers = DBFunctions.check_outliers(meta_cols_instances_fn, nom_bd,connected_user,df)
+                    meta_cols_repetitions = DBFunctions.check_cols_repetitions(meta_cols_instances_fn, nom_bd)
 
-                    meta_cols_repetitions = DBFunctions.check_cols_repetitions(meta_cols_outliers, nom_bd)
+                    attributsCles = ', '.join(df.columns)
 
-                    meta_cols_others = DBFunctions.get_other_stats(meta_cols_repetitions, nom_bd)
+                    DBFunctions.count_doublons(meta_table, nom_bd, attributsCles)
 
-                    DBFunctions.compute_score(meta_cols_others, base_de_donnees)
+                    meta_cols_outliers = DBFunctions.check_outliers(meta_cols_repetitions, nom_bd,connected_user,df, columns_types)
+                    
+                    
+                    meta_cols_others = DBFunctions.get_other_stats(meta_cols_outliers, nom_bd)
+                    meta_cols_general_constraints = DBFunctions.check_general_constraints(meta_cols_others, nom_bd, diagnostic, columns_types = columns_types)
+
+
+                    DBFunctions.compute_score(meta_cols_general_constraints, base_de_donnees)
 
                     #DBFunctions.check_funtional_dependancies(meta_cols_others, nom_bd)
 
@@ -598,7 +614,6 @@ class MetaColonneViewSet(ModelViewSet):
 
         return queryset
 
-      
     
 class LoginView(APIView):
 
@@ -613,7 +628,6 @@ class LoginView(APIView):
             return Response({'detail': 'Données invalides'}, status = status.HTTP_400_BAD_REQUEST)
 
         user_instance = Utilisateur.objects.filter(compte__identifiant=authentication_serializer.data.get("identifiant")).first()
-
 
         user = authenticate(
             username = authentication_serializer.data.get("identifiant"),
@@ -630,12 +644,12 @@ class LoginView(APIView):
         #token_expire_handler will check, if the token is expired it will generate new one
         is_expired, token = token_expire_handler(token)   
         user_serialized = UtilisateurSerializer(user_instance)
-        permission=list(user.get_all_permissions())[0]
+        permission = list(user.get_all_permissions())[0]
         user_instance_data = user_serialized.data
         user_instance_data["identifiant"]=authentication_serializer.data.get("identifiant")
-        user_instance_data.pop('compte',None)
-        user_instance_data.pop('email',None)
-        user_instance_data.pop('telephone',None)
+        user_instance_data.pop('compte', None)
+        user_instance_data.pop('email', None)
+        user_instance_data.pop('telephone', None)
 
         return Response({
             'user': user_instance_data, 
@@ -716,3 +730,33 @@ class DiagnosticDetailViewSet(ModelViewSet):
         else:
             queryset = DiagnosticDetail.objects.all()
         return queryset
+
+
+class GetUserDataView(APIView):
+    http_method_names = ["head","get"]
+
+    # def get_permissions(self):
+    #     if self.request.method == "GET":
+    #         self.permission_classes = [IsAuthenticated]
+
+
+    def get(self, request, *args, **kwargs):
+
+
+        from sqlalchemy import create_engine, text
+        from urllib.parse import quote
+
+        diagnostic_id = self.request.query_params.get('diagnostic_id')
+
+        if diagnostic_id :
+
+            user_db = Diagnostic.objects.filter(id=diagnostic_id).first().base_de_donnees
+
+            pwd = quote(env('POSTGRES_LOCAL_DB_PASSWORD'))  
+            connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:5432/{env('POSTGRES_DB')}"
+            engine = create_engine(connection_string)
+            conn = engine.connect()
+            query = text(f'SELECT * FROM {user_db.nom_base_de_donnees}')
+            df = pd.read_sql_query(query, conn)
+
+        return Response({'detail': df.to_json(orient='records', lines=False)},status=status.HTTP_200_OK)

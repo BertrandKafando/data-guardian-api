@@ -1026,10 +1026,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-
-
-
-
 -- Function to get the primary key of a table
 CREATE OR REPLACE FUNCTION get_primary_key(table_name VARCHAR) RETURNS VARCHAR AS
 $$
@@ -1531,3 +1527,202 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+
+
+-- update function
+CREATE OR REPLACE FUNCTION DiagnoticDeNULLs (NOMTAB VARCHAR, Nom_COL VARCHAR) RETURNS
+TABLE(id_ligne INTEGER, Nom_colonne TEXT)
+AS
+$$
+DECLARE
+Q VARCHAR(2000);
+NbValNulles INTEGER;
+BEGIN
+Q := 'SELECT ' || NOMTAB || '_id, ''' || Nom_COL || ''' FROM ' || NOMTAB || ' WHERE ' || Nom_COL || ' IS NULL';
+IF (TypeDesColonne(NOMTAB, NOM_COL) = 'character varying') THEN
+Q := Q || ' OR (' || Nom_COL || ' IN (''MISSINGVALUE'',''NULL'', ''-'', ''='', ''!'', ''?'',''nan'', ''''))';
+END IF;
+RETURN QUERY EXECUTE Q;
+END;
+$$ LANGUAGE plpgsql;
+
+-- FUNCTION 3:
+DROP FUNCTION IF EXISTS values_not_matching_regex(VARCHAR, VARCHAR, VARCHAR);
+CREATE OR REPLACE FUNCTION values_not_matching_regex(NOMTAB VARCHAR, NOMCOL VARCHAR, REGEX VARCHAR)
+RETURNS TABLE (id_ligne INTEGER, nom_colonne TEXT, valeur_colonne VARCHAR)
+AS
+$$
+DECLARE
+    Q VARCHAR(1000);
+BEGIN
+    Q := 'SELECT ' || NOMTAB || '_id, ''' || NOMCOL || ''', ' || NOMCOL || ' FROM ' || NOMTAB || ' WHERE ' || NOMCOL || ' !~ ''' || REGEX || '''';
+    RAISE NOTICE 'Query: %', Q; 
+    RETURN QUERY EXECUTE Q;
+END;
+$$ LANGUAGE plpgsql;
+
+-- cette fonction permet de récupérer les anomalies en fonction d'une base de faits
+--paramètres:
+    -- NOMTAB : table contenant des anomalies
+    -- COl1: colonne de la table NOMTAB pouvant contenir des anomalies
+    -- NOMTAB_BF : une table contenant la base de faits 
+    -- COL2: colonne de la table NOMTAB_BF avec qui on compare avec COL 1
+CREATE OR REPLACE FUNCTION GetAnomaliesBasedOn (NOMTAB VARCHAR, COL1 VARCHAR, NOMTAB_BF VARCHAR, COL2 VARCHAR) RETURNS TABLE (id_ligne INTEGER, anomalies VARCHAR) AS 
+$$
+DECLARE 
+    Q VARCHAR(1000);
+BEGIN 
+    Q:= 'SELECT ' || NOMTAB || '_id,' || COL1 || ' FROM ' || NOMTAB || ' WHERE ' || COL1 || ' IN (
+            SELECT ' || COL1 || ' FROM ' || NOMTAB ||  ' EXCEPT SELECT ' || COL2 || ' FROM ' || NOMTAB_BF || ')';
+
+
+    RETURN QUERY EXECUTE Q;
+    
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+-- cette fonction permet de traduire le nom d'un pays dans une autre langue (fr, en)
+--paramètres:
+    -- country : le nom du pays
+    -- langue : la langue souhaitée ('fr', 'en')
+CREATE OR REPLACE FUNCTION translateCountryName(country TEXT, langue TEXT)
+RETURNS TEXT AS $$
+DECLARE
+    traduction TEXT;
+BEGIN
+    IF langue = 'fr' THEN
+        SELECT nom_pays_fr INTO traduction FROM bf_pays_continent WHERE UPPER(nom_pays_en) = UPPER(country) LIMIT 1;
+    ELSIF langue = 'en' THEN
+        SELECT nom_pays_en INTO traduction FROM bf_pays_continent WHERE UPPER(nom_pays_fr) = UPPER(country) LIMIT 1;
+    END IF;
+
+    IF traduction IS NOT NULL THEN
+        RETURN traduction;
+    ELSE
+        RETURN '';
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- cette fonction permet de suggérer des corrections pour les pays en fonction de la table contenant des anomalies
+--paramètres:
+    -- nom_table: la table contenant des anomalies
+    -- col1 : reprèsente la colonne pays contenant des anomalies
+    -- seuil: entre (0 et 1) pour choisir les scores de similarité superieur à celui ci
+    -- langue : la langue souhaitée pour la suggestion
+
+CREATE OR REPLACE FUNCTION GetAnomaliesSuggestionsForCountry(
+    nom_table VARCHAR,
+    col1 VARCHAR,
+    seuil FLOAT,
+    langue VARCHAR DEFAULT 'fr'
+) RETURNS TABLE (
+    id_ligne INTEGER,
+    anomaly VARCHAR,
+    suggest VARCHAR,
+    code_2l VARCHAR,
+    code_3l VARCHAR,
+    jw_nom_pays FLOAT,
+    jw_nom_pays_traduit FLOAT,
+    jw_code_2l FLOAT,
+    jw_code_3l FLOAT
+) AS $$
+DECLARE
+    nom_pays_col VARCHAR;
+    query VARCHAR;
+BEGIN
+
+
+     IF langue = 'fr' THEN
+        nom_pays_col := 'nom_pays_fr';
+    ELSE
+        nom_pays_col := 'nom_pays_en';
+    END IF;
+
+    query := '
+
+        SELECT * FROM 
+
+    (SELECT
+        an.id_ligne,
+        an.anomalies, '
+        || nom_pays_col || ',
+        bf.code_2l,
+        bf.code_3l,
+        jarowinkler(bf.' || nom_pays_col || ', an.anomalies) AS jw_nom_pays,
+        jarowinkler(bf.' || nom_pays_col || ', translateCountryName(an.anomalies, ''' || langue || ''')) AS jw_nom_pays_traduit,
+        jarowinkler(bf.code_2l, an.anomalies) AS jw_code_2l,
+        jarowinkler(bf.code_3l, an.anomalies) AS jw_code_3l
+    FROM
+        GetAnomaliesBasedOn(''' || nom_table || ''', ''' || col1 || ''', '' bf_pays_continent '', ''' || nom_pays_col || ''') an
+    CROSS JOIN
+        bf_pays_continent bf ) R
+    WHERE
+        R.jw_code_2l = 1.0 OR
+        R.jw_code_3l = 1.0 OR
+        R.jw_nom_pays_traduit = 1.0 OR
+        R.jw_nom_pays > ' || seuil || '
+    ORDER BY
+        GREATEST(R.jw_nom_pays,R.jw_nom_pays_traduit, R.jw_code_2l, R.jw_code_3l) DESC;';
+    
+
+
+    RETURN QUERY EXECUTE query;
+
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- cette fonction  générique permet de suggérer des corrections pour une colonne données en fonction de la table contenant des anomalies et la base des faits
+--paramètres:
+    -- nom_table: la table contenant des anomalies
+    -- col1 : reprèsente la colonne pays contenant des anomalies
+    -- nom_table_faits : une table contenant la base de faits 
+    -- col2: colonne de la table nom_table_faits avec qui on compare avec COL 1
+    -- seuil: entre (0 et 1) pour choisir les scores de similarité superieur à celui ci
+
+
+CREATE OR REPLACE FUNCTION GetAnomaliesSuggestions(
+    nom_table VARCHAR,
+    col1 VARCHAR,
+    nom_table_faits VARCHAR,
+    col2 VARCHAR,
+    seuil FLOAT
+
+) RETURNS TABLE (
+    id_ligne INTEGER,
+    anomaly VARCHAR,
+    suggest VARCHAR,
+    jw FLOAT
+    
+) AS $$
+DECLARE
+    query VARCHAR;
+BEGIN
+
+    query := '
+
+        SELECT DISTINCT * FROM 
+
+    (SELECT
+        an.id_ligne,
+        an.anomalies, '
+        || col2 || ',
+        jarowinkler(' || col2 || ', an.anomalies) AS jw
+    
+    FROM
+        GetAnomaliesBasedOn(''' || nom_table || ''', ''' || col1 || ''', ''' || nom_table_faits || ''', ''' || col2 || ''') an
+    CROSS JOIN
+        ' || nom_table_faits ||') R
+    WHERE
+        R.jw > ' || seuil || '
+    ORDER BY R.jw DESC;';
+    
+
+    RETURN QUERY EXECUTE query;
+
+END;
+$$ LANGUAGE plpgsql;
