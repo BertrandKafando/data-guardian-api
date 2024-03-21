@@ -18,6 +18,12 @@ import geonamescache
 from google.cloud import translate
 from currency_symbols import CurrencySymbols
 import re
+import unicodedata
+
+from sqlalchemy import create_engine, text
+from urllib.parse import quote
+import environ
+
 
 class EmailThread(threading.Thread):
 
@@ -367,7 +373,7 @@ class DBFunctions:
         results = df[df_doublons]
 
         for index, row in results.iterrows():
-            DataGuardianDiagnostic.insert_diagnostic_details(row[f"{nom_bd}_id"], "Ne dépend pas de la colonne", "", "DOUBLONS", "cette ligne est un doublons", "CODE_CORRECTION_DOUBLONS", diagnostic, "")
+            DataGuardianDiagnostic.insert_diagnostic_details(row[f"{nom_bd}_id"], "Ne dépend pas de la colonne", "", "DOUBLONS", "cette ligne est un doublon", "CODE_CORRECTION_DOUBLONS", diagnostic, "")
 
 
         count = df_doublons.sum()
@@ -526,6 +532,15 @@ class DBFunctions:
         res.replace('', '_')
         res.replace('__', '_')
         return res
+    
+
+
+    def transform_string(input_string):
+        uppercase_string = input_string.upper()
+        replaced_spaces = uppercase_string.replace(' ', '_')
+        normalized_string = ''.join(char for char in unicodedata.normalize('NFD', replaced_spaces) if unicodedata.category(char) != 'Mn')
+        normalized_string = normalized_string.replace('-', '_')
+        return normalized_string
     
     def save_number_of_anomalies(nom_anomalie, valeur_trouvee):
         anomalie = MetaAnomalie()
@@ -1102,7 +1117,7 @@ class DataGuardianDiagnostic :
             detail.id_ligne = id_ligne
             detail.nom_colonne = nom_colonne
             detail.valeur = valeur
-            detail.anomalie = anomalie
+            detail.anomalie = DBFunctions.transform_string(anomalie)
             detail.commentaire = commentaire
             detail.code_correction = code_correction
             detail.diagnostic = diagnostic
@@ -1384,3 +1399,65 @@ class SemanticFunctions:
         
         df[nom_colonne] = df[nom_colonne].apply(fonction_correction)
         return df
+
+
+class DBCorrection:
+    @staticmethod
+    def connect_to_database():
+        env = environ.Env()
+        environ.Env.read_env()
+        pwd = quote(env('POSTGRES_LOCAL_DB_PASSWORD'))  
+        connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:5432/{env('POSTGRES_DB')}"
+        engine = create_engine(connection_string)
+        conn = engine.connect()
+        return conn
+
+    @staticmethod
+    def copy_database(nom_bd):
+        conn = DBCorrection.connect_to_database()
+        
+        # Vérifier si la table existe et la supprimer si c'est le cas
+        check_table_query = text(f"DROP TABLE IF EXISTS {nom_bd}_original")
+        conn.execute(check_table_query)
+
+        # Créer une copie de la table
+        copy_table_query = text(f'CREATE TABLE {nom_bd}_original AS SELECT * FROM {nom_bd}')
+        conn.execute(copy_table_query)
+
+        conn.close()
+
+    @staticmethod
+    def update_database_null_value(diag, db_name):
+        conn = DBCorrection.connect_to_database()
+
+        for index, row in diag.iterrows():
+            conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = NULL WHERE {db_name}_id = {row['id_ligne']}")
+        conn.close()
+
+    @staticmethod
+    def update_database_outlier_by_mean(diag, db_name):
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = (SELECT AVG({row['nom_colonne']}) FROM {db_name}) WHERE {db_name}_id = {row['id_ligne']}")
+        conn.close()
+
+    @staticmethod
+    def update_database_remove_spaces(diag, db_name) :
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = trim({row['nom_colonne']}) WHERE {db_name}_id = {row['id_ligne']}")
+        conn.close()
+
+    @staticmethod
+    def update_database_delete_doublons(diag,db_name) :
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            conn.execute(f"DELETE FROM {db_name} WHERE {db_name}_id = {row['id_ligne']}")
+        conn.close()
+
+    @staticmethod
+    def removes_speciales_caracteres(diag,db_name) :
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = regexp_replace({row['nom_colonne']}, '[^A-Za-z0-9]+', '', 'g') WHERE {db_name}_id = {row['id_ligne']}")
+        conn.close()
