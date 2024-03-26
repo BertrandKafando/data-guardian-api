@@ -26,6 +26,8 @@ from langdetect import detect, LangDetectException
 from collections import Counter
 import re
 import pandas as pd
+from sqlalchemy import create_engine, text
+
 
 
 env = environ.Env()
@@ -844,9 +846,42 @@ class ApplyCorrectionView(APIView):
              DBCorrection.removes_speciales_caracteres(df, bd.nom_base_de_donnees)
 
 
-             
+             queryset_countries = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="PAYS_INCONNU_OU_MAL_ECRIT")
+             df = pd.DataFrame(list(queryset_countries.values()))
+             DBCorrection.fix_countries_errors(df, bd.nom_base_de_donnees)
 
-             return Response({'detail': 'ok'}, status=status.HTTP_200_OK)
+             queryset_cities = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="VILLE_INCONNU_OU_MAL_ECRIT")
+             df = pd.DataFrame(list(queryset_cities.values()))
+             DBCorrection.fix_errors_based_on(df, bd.nom_base_de_donnees, 'bf_ville', 'nom_ville_fr')
+
+
+             queryset_civilities = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="CIVILITE_INCONNU")
+             df = pd.DataFrame(list(queryset_civilities.values()))
+             DBCorrection.fix_errors_based_on(df, bd.nom_base_de_donnees, 'bf_civilite', 'civilite')
+
+             queryset_blood_group = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="GROUPE_SANGUIN_INCONNU")
+             df = pd.DataFrame(list(queryset_blood_group.values()))
+             DBCorrection.fix_errors_based_on(df, bd.nom_base_de_donnees, 'bf_groupe_sanguin', 'groupe')
+           
+
+             queryset_invalides_numerics_values = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="VALEUR_NUMERIQUE_INCORRECTE")
+             df = pd.DataFrame(list(queryset_invalides_numerics_values.values()))
+             DBCorrection.fix_invalides_numerical_values(df, bd.nom_base_de_donnees)
+
+
+             # retourner la table corrigé
+             conn = DBCorrection.connect_to_database()
+             query = text(f'SELECT * FROM {bd.nom_base_de_donnees}')
+             df = pd.read_sql_query(query, conn)
+
+                # Convertir le DataFrame en chaîne JSON, puis en objet Python
+             data_json = df.to_json(orient='records', lines=False)
+             data = json.loads(data_json)
+
+             conn.close()
+
+             return Response(data, status=status.HTTP_200_OK)
+
            else:
                 queryset = DiagnosticDetail.objects.all()
            return queryset

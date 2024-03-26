@@ -1355,6 +1355,12 @@ class SemanticFunctions:
         return numeric_amount
     
 
+
+    def replace_extra_spaces(string):
+        return re.sub(r'\s+', ' ', string).strip()
+
+    
+
     def convert_currency(amount, conversion_rate, new_currency_symbol=None):
 
         numeric_amount = float(re.sub(r'[^\d.]+', '', amount))
@@ -1420,18 +1426,23 @@ class DBCorrection:
         check_table_query = text(f"DROP TABLE IF EXISTS {nom_bd}_original")
         conn.execute(check_table_query)
 
+        empty_table = text(f"CREATE TABLE {nom_bd}_original AS SELECT * FROM {nom_bd} WHERE 1 = 0;")
+        conn.execute(empty_table)
+
+        insert_copy = text(f"INSERT INTO {nom_bd}_original SELECT * FROM {nom_bd};")
+        conn.execute(insert_copy)
+
         # Créer une copie de la table
-        copy_table_query = text(f'CREATE TABLE {nom_bd}_original AS SELECT * FROM {nom_bd}')
-        conn.execute(copy_table_query)
+        # copy_table_query = text(f'CREATE TABLE {nom_bd}_original AS SELECT * FROM {nom_bd}')
+        # conn.execute(copy_table_query)
 
         conn.close()
 
     @staticmethod
     def update_database_null_value(diag, db_name):
         conn = DBCorrection.connect_to_database()
-
         for index, row in diag.iterrows():
-            conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = NULL WHERE {db_name}_id = {row['id_ligne']}")
+            conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = NULL WHERE {db_name}_id = {row['id_ligne']} OR {row['nom_colonne']} IN ('-', '?', ' -', '- ', '!')")
         conn.close()
 
     @staticmethod
@@ -1445,6 +1456,8 @@ class DBCorrection:
     def update_database_remove_spaces(diag, db_name) :
         conn = DBCorrection.connect_to_database()
         for index, row in diag.iterrows():
+            value = SemanticFunctions.replace_extra_spaces(row['nom_colonne'])
+            print(f"UPDATE {db_name} SET {row['nom_colonne']} = trim({value}) WHERE {db_name}_id = {row['id_ligne']}")
             conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = trim({row['nom_colonne']}) WHERE {db_name}_id = {row['id_ligne']}")
         conn.close()
 
@@ -1459,5 +1472,47 @@ class DBCorrection:
     def removes_speciales_caracteres(diag,db_name) :
         conn = DBCorrection.connect_to_database()
         for index, row in diag.iterrows():
-            conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = regexp_replace({row['nom_colonne']}, '[^A-Za-z0-9]+', '', 'g') WHERE {db_name}_id = {row['id_ligne']}")
+            conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = regexp_replace({row['nom_colonne']}, '[^A-Za-z0-9-]+', '', 'g') WHERE {db_name}_id = {row['id_ligne']}")
         conn.close()
+
+    @staticmethod
+    def fix_countries_errors(diag, db_name):
+        conn = DBCorrection.connect_to_database()
+        countries_columns = diag['nom_colonne'].unique()
+        DBCorrection.update_database_remove_spaces(diag, db_name)
+        DBCorrection.removes_speciales_caracteres(diag,db_name)
+        for country_column in countries_columns:
+            print(f"SELECT * FROM GetAnomaliesSuggestionsForCountry('{db_name}', '{country_column}', 0.85, 'fr')")
+            query = text(f"SELECT * FROM GetAnomaliesSuggestionsForCountry('{db_name}', '{country_column}', 0.85, 'fr')")
+            df = pd.read_sql_query(query, conn)
+            updated_ids = {}
+            for index, row in df.iterrows():
+                if row['id_ligne'] not in updated_ids:
+                    print(f"UPDATE {db_name} SET {country_column} = '{row['suggest']}' WHERE {db_name}_id = {row['id_ligne']}")
+                    conn.execute(f"UPDATE {db_name} SET {country_column} = '{row['suggest']}' WHERE {db_name}_id = {row['id_ligne']}")
+                    updated_ids[row['id_ligne']] = row['suggest']
+            print(updated_ids)
+        conn.close()
+
+    def fix_errors_based_on(diag, db_name, base_faits,col_fait):
+        conn = DBCorrection.connect_to_database()
+        countries_columns = diag['nom_colonne'].unique()
+        DBCorrection.update_database_remove_spaces(diag, db_name)
+        for country_column in countries_columns:
+            query = text(f"SELECT * FROM GetAnomaliesSuggestions('{db_name}', '{country_column}', '{base_faits}', '{col_fait}', 0.70)")
+            df = pd.read_sql_query(query, conn)
+            updated_ids = {}
+            for index, row in df.iterrows():
+                if row['id_ligne'] not in updated_ids:
+                    print(f"UPDATE {db_name} SET {country_column} = '{row['suggest']}' WHERE {db_name}_id = {row['id_ligne']}")
+                    suggest = row['suggest'].replace("'", "''")
+                    conn.execute(f"UPDATE {db_name} SET {country_column} = '{suggest}' WHERE {db_name}_id = {row['id_ligne']}")
+            print("update col", updated_ids)
+        conn.close()
+    
+    def fix_invalides_numerical_values(diag, db_name):
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = NULL WHERE {db_name}_id = {row['id_ligne']} OR {row['nom_colonne']} IN ('-', '?', ' -', '- ', '!')")
+        conn.close()
+        
