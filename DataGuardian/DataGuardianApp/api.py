@@ -27,6 +27,8 @@ from collections import Counter
 import re
 import pandas as pd
 from sqlalchemy import create_engine, text
+from django.http import HttpResponse
+import csv
 
 
 
@@ -739,13 +741,10 @@ class DiagnosticDetailViewSet(ModelViewSet):
     def get_queryset(self):
         
        bd_id = self.request.query_params.get('bd_id')
-       print("bd",bd_id)
        if bd_id:
            bd = BaseDeDonnees.objects.filter(id=bd_id).first()
            diagnostic = Diagnostic.objects.filter(base_de_donnees=bd).first()
-           print("diagnostic",diagnostic)
            diagnostic_id = diagnostic.id
-           print(diagnostic_id)
 
            if diagnostic_id:
              queryset = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id)
@@ -779,7 +778,7 @@ class GetUserDataView(APIView):
                 connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:5432/{env('POSTGRES_DB')}"
                 engine = create_engine(connection_string)
                 conn = engine.connect()
-                query = text(f'SELECT * FROM {user_db.nom_base_de_donnees}')
+                query = text(f'SELECT * FROM {user_db.nom_base_de_donnees} ORDER BY {user_db.nom_base_de_donnees}_id ASC')
                 df = pd.read_sql_query(query, conn)
 
                 # Convertir le DataFrame en chaîne JSON, puis en objet Python
@@ -813,16 +812,13 @@ class ApplyCorrectionView(APIView):
     def get(self, request, *args, **kwargs):
         
        bd_id = self.request.query_params.get('bd_id')
-       print("bd",bd_id)
        if bd_id:
            bd = BaseDeDonnees.objects.filter(id=bd_id).first()
 
            # copy la base de données orginale
            DBCorrection.copy_database(bd.nom_base_de_donnees)
            diagnostic = Diagnostic.objects.filter(base_de_donnees=bd).first()
-           print("diagnostic",diagnostic)
            diagnostic_id = diagnostic.id
-           print(diagnostic_id)
 
            if diagnostic_id:
              queryset_nulls = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="VALEUR_NULL")
@@ -846,32 +842,55 @@ class ApplyCorrectionView(APIView):
              DBCorrection.removes_speciales_caracteres(df, bd.nom_base_de_donnees)
 
 
+
+
+             queryset_email = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="EMAIL_INCORRECTE")
+             df = pd.DataFrame(list(queryset_email.values()))
+             DBCorrection.removes_invalid_emails(df, bd.nom_base_de_donnees)
+             DBCorrection.string_to(df, bd.nom_base_de_donnees, DBCorrection.string_to_lower)
+
+
+
              queryset_countries = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="PAYS_INCONNU_OU_MAL_ECRIT")
              df = pd.DataFrame(list(queryset_countries.values()))
              DBCorrection.fix_countries_errors(df, bd.nom_base_de_donnees)
+             
 
              queryset_cities = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="VILLE_INCONNU_OU_MAL_ECRIT")
              df = pd.DataFrame(list(queryset_cities.values()))
              DBCorrection.fix_errors_based_on(df, bd.nom_base_de_donnees, 'bf_ville', 'nom_ville_fr')
+             DBCorrection.string_to(df, bd.nom_base_de_donnees, DBCorrection.string_to_capitalize)
+
 
 
              queryset_civilities = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="CIVILITE_INCONNU")
              df = pd.DataFrame(list(queryset_civilities.values()))
              DBCorrection.fix_errors_based_on(df, bd.nom_base_de_donnees, 'bf_civilite', 'civilite')
+             DBCorrection.string_to(df, bd.nom_base_de_donnees, DBCorrection.string_to_capitalize)
+
 
              queryset_blood_group = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="GROUPE_SANGUIN_INCONNU")
              df = pd.DataFrame(list(queryset_blood_group.values()))
              DBCorrection.fix_errors_based_on(df, bd.nom_base_de_donnees, 'bf_groupe_sanguin', 'groupe')
+             DBCorrection.string_to(df, bd.nom_base_de_donnees, DBCorrection.string_to_upper)
+
            
 
              queryset_invalides_numerics_values = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="VALEUR_NUMERIQUE_INCORRECTE")
              df = pd.DataFrame(list(queryset_invalides_numerics_values.values()))
              DBCorrection.fix_invalides_numerical_values(df, bd.nom_base_de_donnees)
 
+             # homogénisation des types inconnus:
+             # les colonnes de type string et non reconnu dans les types sémantiques seront en init cap
+             queryset_unknown_type = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, type_colonne="UNKNOWN")
+             df = pd.DataFrame(list(queryset_unknown_type.values()))
+             DBCorrection.string_to(df, bd.nom_base_de_donnees, DBCorrection.string_to_capitalize)
+
+
 
              # retourner la table corrigé
              conn = DBCorrection.connect_to_database()
-             query = text(f'SELECT * FROM {bd.nom_base_de_donnees}')
+             query = text(f'SELECT * FROM {bd.nom_base_de_donnees} ORDER BY {bd.nom_base_de_donnees}_id ASC')
              df = pd.read_sql_query(query, conn)
 
                 # Convertir le DataFrame en chaîne JSON, puis en objet Python
@@ -885,3 +904,50 @@ class ApplyCorrectionView(APIView):
            else:
                 queryset = DiagnosticDetail.objects.all()
            return queryset
+       
+
+class DownloadDataView(APIView):
+    http_method_names = ["head","get"]
+
+    # def get_permissions(self):
+    #     if self.request.method == "GET":
+    #         self.permission_classes = [IsAuthenticated]
+
+
+    def get(self, request, *args, **kwargs):
+
+
+        from sqlalchemy import create_engine, text
+        from urllib.parse import quote
+
+        db_id = self.request.query_params.get('bd_id')
+        #diagnostic_id = self.request.query_params.get('diagnostic_id')
+
+        if db_id :
+
+            user_db = BaseDeDonnees.objects.filter(id=db_id).first()
+            if user_db:
+                pwd = quote(env('POSTGRES_LOCAL_DB_PASSWORD'))  
+                connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:5432/{env('POSTGRES_DB')}"
+                engine = create_engine(connection_string)
+                conn = engine.connect()
+                query = text(f'SELECT * FROM {user_db.nom_base_de_donnees} ORDER BY {user_db.nom_base_de_donnees}_id ASC')
+                df = pd.read_sql_query(query, conn)
+
+                df = df[df.columns[1:]]
+
+                filename = user_db.nom_base_de_donnees.split('_')[0] + "_correction.csv"
+
+                response = HttpResponse(content_type='text/csv')
+                response['Content-Disposition'] = f"attachment; filename={filename}"  # Correct header name
+
+
+                df.to_csv(path_or_buf=response, index=False, quoting=csv.QUOTE_ALL)
+
+
+                return response
+            else:
+                return Response({'detail': 'Base de données introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({'detail': 'Paramètre db_id manquant.'}, status=status.HTTP_400_BAD_REQUEST)
+    

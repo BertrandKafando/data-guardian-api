@@ -21,6 +21,6 @@ exec /usr/local/bin/gunicorn ${DJANGO_WSGI_MODULE}:application \
 	--name $NAME \
 	--workers $NUM_WORKERS \
 	--bind '0.0.0.0:8000' \
-	--timeout 2000 \
+	--timeout 1000 \
 	--log-level=debug \
 	--log-file=- 
