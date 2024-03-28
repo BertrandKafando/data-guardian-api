@@ -18,6 +18,12 @@ import geonamescache
 from google.cloud import translate
 from currency_symbols import CurrencySymbols
 import re
+import unicodedata
+
+from sqlalchemy import create_engine, text
+from urllib.parse import quote
+import environ
+
 
 class EmailThread(threading.Thread):
 
@@ -367,7 +373,7 @@ class DBFunctions:
         results = df[df_doublons]
 
         for index, row in results.iterrows():
-            DataGuardianDiagnostic.insert_diagnostic_details(row[f"{nom_bd}_id"], "Ne dépend pas de la colonne", "", "DOUBLONS", "cette ligne est un doublons", "CODE_CORRECTION_DOUBLONS", diagnostic, "")
+            DataGuardianDiagnostic.insert_diagnostic_details(row[f"{nom_bd}_id"], "Ne dépend pas de la colonne", "", "DOUBLONS", "cette ligne est un doublon", "CODE_CORRECTION_DOUBLONS", diagnostic, "")
 
 
         count = df_doublons.sum()
@@ -526,6 +532,15 @@ class DBFunctions:
         res.replace('', '_')
         res.replace('__', '_')
         return res
+    
+
+
+    def transform_string(input_string):
+        uppercase_string = input_string.upper()
+        replaced_spaces = uppercase_string.replace(' ', '_')
+        normalized_string = ''.join(char for char in unicodedata.normalize('NFD', replaced_spaces) if unicodedata.category(char) != 'Mn')
+        normalized_string = normalized_string.replace('-', '_')
+        return normalized_string
     
     def save_number_of_anomalies(nom_anomalie, valeur_trouvee):
         anomalie = MetaAnomalie()
@@ -1102,7 +1117,7 @@ class DataGuardianDiagnostic :
             detail.id_ligne = id_ligne
             detail.nom_colonne = nom_colonne
             detail.valeur = valeur
-            detail.anomalie = anomalie
+            detail.anomalie = DBFunctions.transform_string(anomalie)
             detail.commentaire = commentaire
             detail.code_correction = code_correction
             detail.diagnostic = diagnostic
@@ -1141,7 +1156,6 @@ class DataGuardianDiagnostic :
     def extraire_id(tuple_input):
         # Extraire la chaîne du tuple
         input_str = tuple_input[0]
-        print("input_str",input_str)
 
         # Enlever les caractères externes pour isoler 'X,Y'
         clean_str = input_str[2:-3]
@@ -1340,6 +1354,15 @@ class SemanticFunctions:
         return numeric_amount
     
 
+
+    def replace_extra_spaces(string):
+        return re.sub(r'\s+', ' ', string).strip()
+    
+  
+        
+
+    
+
     def convert_currency(amount, conversion_rate, new_currency_symbol=None):
 
         numeric_amount = float(re.sub(r'[^\d.]+', '', amount))
@@ -1384,3 +1407,187 @@ class SemanticFunctions:
         
         df[nom_colonne] = df[nom_colonne].apply(fonction_correction)
         return df
+
+
+class DBCorrection:
+    @staticmethod
+    def connect_to_database():
+        env = environ.Env()
+        environ.Env.read_env()
+        pwd = quote(env('POSTGRES_LOCAL_DB_PASSWORD'))  
+        connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:5432/{env('POSTGRES_DB')}"
+        engine = create_engine(connection_string)
+        conn = engine.connect()
+        return conn
+
+    @staticmethod
+    def copy_database(nom_bd):
+        conn = DBCorrection.connect_to_database()
+        
+        # Vérifier si la table existe et la supprimer si c'est le cas
+        check_table_query = text(f"DROP TABLE IF EXISTS {nom_bd}_original")
+        conn.execute(check_table_query)
+
+        empty_table = text(f"CREATE TABLE {nom_bd}_original AS SELECT * FROM {nom_bd} WHERE 1 = 0;")
+        conn.execute(empty_table)
+
+        insert_copy = text(f"INSERT INTO {nom_bd}_original SELECT * FROM {nom_bd};")
+        conn.execute(insert_copy)
+
+        # Créer une copie de la table
+        # copy_table_query = text(f'CREATE TABLE {nom_bd}_original AS SELECT * FROM {nom_bd}')
+        # conn.execute(copy_table_query)
+
+        conn.close()
+
+    @staticmethod
+    def update_database_null_value(diag, db_name):
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = NULL WHERE {db_name}_id = {row['id_ligne']} OR {row['nom_colonne']} IN ('-', '?', ' -', '- ', '!')")
+        conn.close()
+
+    @staticmethod
+    def update_database_outlier_by_mean(diag, db_name):
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = (SELECT AVG({row['nom_colonne']}) FROM {db_name}) WHERE {db_name}_id = {row['id_ligne']}")
+        conn.close()
+
+    @staticmethod
+    def update_database_remove_spaces(diag, db_name) :
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            value = SemanticFunctions.replace_extra_spaces(row['nom_colonne'])
+            conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = trim({row['nom_colonne']}) WHERE {db_name}_id = {row['id_ligne']}")
+        conn.close()
+
+    @staticmethod
+    def update_database_delete_doublons(diag,db_name) :
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            conn.execute(f"DELETE FROM {db_name} WHERE {db_name}_id = {row['id_ligne']}")
+        conn.close()
+
+    @staticmethod
+    def removes_speciales_caracteres(diag,db_name) :
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            if row['type_colonne'] == 'UNKNOWN':
+                conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = regexp_replace({row['nom_colonne']}, '[^A-Za-z0-9]+', '', 'g') WHERE {db_name}_id = {row['id_ligne']}")
+        conn.close()
+
+    @staticmethod
+    def removes_invalid_emails(diag,db_name) :
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            if row['type_colonne'] == 'email':
+                conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = NULL WHERE {db_name}_id = {row['id_ligne']}")
+        conn.close()
+
+    @staticmethod
+    def fix_countries_errors(diag, db_name):
+        conn = DBCorrection.connect_to_database()
+        countries_columns = diag['nom_colonne'].unique()
+        DBCorrection.update_database_remove_spaces(diag, db_name)
+        DBCorrection.removes_speciales_caracteres(diag,db_name)
+        for country_column in countries_columns:
+            query = text(f"SELECT * FROM GetAnomaliesSuggestionsForCountry('{db_name}', '{country_column}', 0.85, 'fr')")
+            df = pd.read_sql_query(query, conn)
+            updated_ids = {}
+            for index, row in df.iterrows():
+                if row['id_ligne'] not in updated_ids:
+                    conn.execute(f"UPDATE {db_name} SET {country_column} = '{row['suggest']}' WHERE {db_name}_id = {row['id_ligne']}")
+                    updated_ids[row['id_ligne']] = row['suggest']
+        conn.close()
+
+        #homogénisation pays:
+        DBCorrection.string_to(diag, db_name, DBCorrection.string_to_upper)
+
+    def fix_errors_based_on(diag, db_name, base_faits,col_fait):
+        conn = DBCorrection.connect_to_database()
+        countries_columns = diag['nom_colonne'].unique()
+        DBCorrection.update_database_remove_spaces(diag, db_name)
+        for country_column in countries_columns:
+            query = text(f"SELECT * FROM GetAnomaliesSuggestions('{db_name}', '{country_column}', '{base_faits}', '{col_fait}', 0.85)")
+            df = pd.read_sql_query(query, conn)
+            updated_ids = {}
+            for index, row in df.iterrows():
+                if row['id_ligne'] not in updated_ids:
+                    suggest = row['suggest'].replace("'", "''")
+                    conn.execute(f"UPDATE {db_name} SET {country_column} = '{suggest}' WHERE {db_name}_id = {row['id_ligne']}")
+        conn.close()
+
+    
+    def fix_invalides_numerical_values(diag, db_name):
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = NULL WHERE {db_name}_id = {row['id_ligne']} OR {row['nom_colonne']} IN ('-', '?', ' -', '- ', '!')")
+        conn.close()
+
+    def string_to_capitalize(m):
+        if isinstance(m, str):
+            return m.lower().capitalize()
+    
+    def string_to_upper(m):
+        if isinstance(m, str):
+            return m.upper()
+        
+    def string_to_lower(m):
+        if isinstance(m, str):
+            return m.lower()
+
+    # def string_to_init_cap(diag, db_name):
+    #     noms_columns = diag['nom_colonne'].unique()
+    #     conn = DBCorrection.connect_to_database()
+    #     for nom_colonne in noms_columns:
+    #         query = text(f"SELECT * FROM {db_name}")
+    #         df = pd.read_sql_query(query, conn)
+    #         df[nom_colonne.lower()] = df[nom_colonne.lower()].apply(SemanticFunctions.string_to_capitalize)
+    
+    # def string_to_uppercase(diag, db_name):
+    #     noms_columns = diag['nom_colonne'].unique()
+    #     conn = DBCorrection.connect_to_database()
+    #     for nom_colonne in noms_columns:
+    #         query = text(f"SELECT * FROM {db_name}")
+    #         df = pd.read_sql_query(query, conn)
+    #         df[nom_colonne.lower()] = df[nom_colonne.lower()].apply(SemanticFunctions.string_to_upper)
+    #         for index, row in df.iterrows():
+    #             value = row[nom_colonne.lower()]
+    #             if  value != None:
+    #                 conn.execute(f"UPDATE {db_name} SET {nom_colonne} = '{value}' WHERE {db_name}_id = {row[db_name+'_id']}")
+        
+    #     conn.close()
+
+    def string_to(diag, db_name, nom_fonction):
+        noms_columns = diag['nom_colonne'].unique()
+        conn = DBCorrection.connect_to_database()
+        for nom_colonne in noms_columns:
+            query = text(f"SELECT * FROM {db_name}")
+            df = pd.read_sql_query(query, conn)
+            df[nom_colonne.lower()] = df[nom_colonne.lower()].apply(nom_fonction)
+            for index, row in df.iterrows():
+                value = row[nom_colonne.lower()]
+                if value is not None:
+                    update_query = f"UPDATE {db_name} SET {nom_colonne} = %s WHERE {db_name}_id = %s"
+                    conn.execute(update_query, (value, row[db_name+'_id']))
+
+        
+        conn.close()
+
+
+    
+    # def string_to_lowercase(diag, db_name):
+    #     noms_columns = diag['nom_colonne'].unique()
+    #     conn = DBCorrection.connect_to_database()
+    #     query = text(f"SELECT * FROM {db_name}")
+    #     df = pd.read_sql_query(query, conn)
+    #     for nom_colonne in noms_columns:
+    #         df[nom_colonne.lower()] = df[nom_colonne.lower()].apply(SemanticFunctions.string_to_lower)
+
+
+
+
+
+        conn.close()
+        

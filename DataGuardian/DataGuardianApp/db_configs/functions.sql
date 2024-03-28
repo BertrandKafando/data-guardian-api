@@ -1618,6 +1618,24 @@ $$ LANGUAGE plpgsql;
 --paramètres:
     -- country : le nom du pays
     -- langue : la langue souhaitée ('fr', 'en')
+DROP FUNCTION GetAnomaliesBasedOn;
+CREATE OR REPLACE FUNCTION GetAnomaliesBasedOn (NOMTAB VARCHAR, COL1 VARCHAR, NOMTAB_BF VARCHAR, COL2 VARCHAR) RETURNS TABLE (id_ligne INTEGER, anomalies TEXT) AS 
+$$
+DECLARE 
+    Q VARCHAR(1000);
+BEGIN 
+    Q:= 'SELECT ' || NOMTAB || '_id,' || COL1 || '::TEXT FROM ' || NOMTAB || ' WHERE UPPER(' || COL1 || ') IN (
+            SELECT UPPER(' || COL1 || ') AS '|| COL1 || ' FROM ' || NOMTAB ||  ' EXCEPT SELECT UPPER(' || COL2 || ') AS '|| COL1 || ' FROM ' || NOMTAB_BF || ')';
+
+	RAISE NOTICE '%', Q;
+    RETURN QUERY EXECUTE Q;
+    
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- translate
+
 CREATE OR REPLACE FUNCTION translateCountryName(country TEXT, langue TEXT)
 RETURNS TEXT AS $$
 DECLARE
@@ -1636,8 +1654,6 @@ BEGIN
     END IF;
 END;
 $$ LANGUAGE plpgsql;
-
-
 -- cette fonction permet de suggérer des corrections pour les pays en fonction de la table contenant des anomalies
 --paramètres:
     -- nom_table: la table contenant des anomalies
@@ -1645,6 +1661,7 @@ $$ LANGUAGE plpgsql;
     -- seuil: entre (0 et 1) pour choisir les scores de similarité superieur à celui ci
     -- langue : la langue souhaitée pour la suggestion
 
+DROP FUNCTION GetAnomaliesSuggestionsForCountry;
 CREATE OR REPLACE FUNCTION GetAnomaliesSuggestionsForCountry(
     nom_table VARCHAR,
     col1 VARCHAR,
@@ -1652,14 +1669,15 @@ CREATE OR REPLACE FUNCTION GetAnomaliesSuggestionsForCountry(
     langue VARCHAR DEFAULT 'fr'
 ) RETURNS TABLE (
     id_ligne INTEGER,
-    anomaly VARCHAR,
+    anomaly TEXT,
     suggest VARCHAR,
     code_2l VARCHAR,
     code_3l VARCHAR,
     jw_nom_pays FLOAT,
     jw_nom_pays_traduit FLOAT,
     jw_code_2l FLOAT,
-    jw_code_3l FLOAT
+    jw_code_3l FLOAT,
+	jw_sans_car_spec FLOAT
 ) AS $$
 DECLARE
     nom_pays_col VARCHAR;
@@ -1686,7 +1704,8 @@ BEGIN
         jarowinkler(bf.' || nom_pays_col || ', an.anomalies) AS jw_nom_pays,
         jarowinkler(bf.' || nom_pays_col || ', translateCountryName(an.anomalies, ''' || langue || ''')) AS jw_nom_pays_traduit,
         jarowinkler(bf.code_2l, an.anomalies) AS jw_code_2l,
-        jarowinkler(bf.code_3l, an.anomalies) AS jw_code_3l
+        jarowinkler(bf.code_3l, an.anomalies) AS jw_code_3l,
+		jarowinkler(bf.' || nom_pays_col || ', regexp_replace(an.anomalies, ''[^A-Za-z0-9]+'', '''', ''g'')) AS jw_sans_car_spec
     FROM
         GetAnomaliesBasedOn(''' || nom_table || ''', ''' || col1 || ''', '' bf_pays_continent '', ''' || nom_pays_col || ''') an
     CROSS JOIN
@@ -1695,9 +1714,10 @@ BEGIN
         R.jw_code_2l = 1.0 OR
         R.jw_code_3l = 1.0 OR
         R.jw_nom_pays_traduit = 1.0 OR
-        R.jw_nom_pays > ' || seuil || '
+        R.jw_nom_pays > ' || seuil || ' OR 
+        R.jw_sans_car_spec > ' || seuil || '
     ORDER BY
-        GREATEST(R.jw_nom_pays,R.jw_nom_pays_traduit, R.jw_code_2l, R.jw_code_3l) DESC;';
+        GREATEST(R.jw_nom_pays,R.jw_nom_pays_traduit, R.jw_code_2l, R.jw_code_3l, R.jw_sans_car_spec) DESC;';
     
 
 
@@ -1715,7 +1735,7 @@ $$ LANGUAGE plpgsql;
     -- col2: colonne de la table nom_table_faits avec qui on compare avec COL 1
     -- seuil: entre (0 et 1) pour choisir les scores de similarité superieur à celui ci
 
-
+DROP FUNCTION GetAnomaliesSuggestions;
 CREATE OR REPLACE FUNCTION GetAnomaliesSuggestions(
     nom_table VARCHAR,
     col1 VARCHAR,
@@ -1725,7 +1745,7 @@ CREATE OR REPLACE FUNCTION GetAnomaliesSuggestions(
 
 ) RETURNS TABLE (
     id_ligne INTEGER,
-    anomaly VARCHAR,
+    anomaly TEXT,
     suggest VARCHAR,
     jw FLOAT
     

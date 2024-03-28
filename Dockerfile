@@ -49,4 +49,3 @@ EXPOSE 8000
 
 # set entrypoint
 ENTRYPOINT ["./entrypoint.sh"]
-
