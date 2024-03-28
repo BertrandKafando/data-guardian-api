@@ -772,7 +772,7 @@ class GetUserDataView(APIView):
             user_db = BaseDeDonnees.objects.filter(id=db_id).first()
             if user_db:
                 pwd = quote(env('POSTGRES_LOCAL_DB_PASSWORD'))  
-                connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:5432/{env('POSTGRES_DB')}"
+                connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:{env('DB_PORT')}/{env('POSTGRES_DB')}"
                 engine = create_engine(connection_string)
                 conn = engine.connect()
                 query = text(f'SELECT * FROM {user_db.nom_base_de_donnees}')

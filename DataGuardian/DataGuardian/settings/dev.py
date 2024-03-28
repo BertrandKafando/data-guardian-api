@@ -7,7 +7,7 @@ DATABASES = {
 			'USER': env('POSTGRES_LOCAL_DB_USERNAME'),
 			'PASSWORD': env('POSTGRES_LOCAL_DB_PASSWORD'),
 			'HOST': env('DATABASE_LOCAL_HOST'),
-			'PORT': '5432',
+			'PORT': env('DB_PORT'),
             'ATOMIC_REQUESTS': True
 	}
 }
