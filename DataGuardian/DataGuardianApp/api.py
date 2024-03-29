@@ -346,9 +346,9 @@ class DiagnosticViewSet(APIView):
 
 
                 """récupérer les types sémantiques"""
-                # columns_types =  DBTypesDetection.detect_columns_type(df[df.columns[1:]])
+                columns_types =  DBTypesDetection.detect_columns_type(df[df.columns[1:]])
                 # print(columns_types)
-                columns_types = {'Column_0': 'UNKNOWN', 'Column_1': 'civilite', 'Column_2': 'UNKNOWN', 'Column_3': 'UNKNOWN', 'Column_4': 'UNKNOWN', 'Column_5': 'numerique', 'Column_6': 'UNKNOWN', 'Column_7': 'numerique', 'Column_8': 'ville', 'Column_9': 'pays', 'Column_10': 'email', 'Column_11': 'phone', 'Column_12': 'date', 'Column_13': 'date', 'Column_14': 'groupe_sanguin', 'Column_15': 'UNKNOWN'}
+                #columns_types = {'Column_0': 'UNKNOWN', 'Column_1': 'civilite', 'Column_2': 'UNKNOWN', 'Column_3': 'UNKNOWN', 'Column_4': 'UNKNOWN', 'Column_5': 'numerique', 'Column_6': 'UNKNOWN', 'Column_7': 'numerique', 'Column_8': 'ville', 'Column_9': 'pays', 'Column_10': 'email', 'Column_11': 'phone', 'Column_12': 'date', 'Column_13': 'date', 'Column_14': 'groupe_sanguin', 'Column_15': 'UNKNOWN'}
                 #columns_types = {'Employee': 'UNKNOWN', 'Amount':'numerique'}
 
                 #Diagnostic concernant tous les types
@@ -775,7 +775,7 @@ class GetUserDataView(APIView):
             user_db = BaseDeDonnees.objects.filter(id=db_id).first()
             if user_db:
                 pwd = quote(env('POSTGRES_LOCAL_DB_PASSWORD'))  
-                connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:5432/{env('POSTGRES_DB')}"
+                connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:{env('DB_PORT')}/{env('POSTGRES_DB')}"
                 engine = create_engine(connection_string)
                 conn = engine.connect()
                 query = text(f'SELECT * FROM {user_db.nom_base_de_donnees} ORDER BY {user_db.nom_base_de_donnees}_id ASC')
@@ -928,7 +928,7 @@ class DownloadDataView(APIView):
             user_db = BaseDeDonnees.objects.filter(id=db_id).first()
             if user_db:
                 pwd = quote(env('POSTGRES_LOCAL_DB_PASSWORD'))  
-                connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:5432/{env('POSTGRES_DB')}"
+                connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:{env('DB_PORT')}/{env('POSTGRES_DB')}"
                 engine = create_engine(connection_string)
                 conn = engine.connect()
                 query = text(f'SELECT * FROM {user_db.nom_base_de_donnees} ORDER BY {user_db.nom_base_de_donnees}_id ASC')

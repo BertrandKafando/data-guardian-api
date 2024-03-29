@@ -1415,7 +1415,7 @@ class DBCorrection:
         env = environ.Env()
         environ.Env.read_env()
         pwd = quote(env('POSTGRES_LOCAL_DB_PASSWORD'))  
-        connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:5432/{env('POSTGRES_DB')}"
+        connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:{env('DB_PORT')}/{env('POSTGRES_DB')}"
         engine = create_engine(connection_string)
         conn = engine.connect()
         return conn
