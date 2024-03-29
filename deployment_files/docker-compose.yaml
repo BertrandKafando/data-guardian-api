@@ -1,0 +1,50 @@
+version: "3.9"
+services:
+  postgres:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: postgresql_v1
+    restart: always
+    env_file:
+      - ./.env
+    volumes:
+      - ./pgdata_v1:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "5433:5432"
+    networks:
+      - dba-network
+    
+  backend:
+    build:
+      context: ../data-guardian-api
+      dockerfile: Dockerfile
+    container_name: backend
+    restart: always
+    depends_on:
+      - postgres
+    env_file:
+      - ../data-guardian-api/DataGuardian/DataGuardian/settings/.env
+    volumes:
+      - ../data-guardian-api:/home/app/webapp
+    ports:
+      - "8000:8000"
+    networks:
+      - dba-network
+  
+  client-app:
+    build:
+      context: ../data-guardian-client
+      dockerfile: Dockerfile
+    container_name: dataguardian-client-app
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    networks:
+      - dba-network
+
+networks:
+  dba-network:
