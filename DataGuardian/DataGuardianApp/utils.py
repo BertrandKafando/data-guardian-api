@@ -5,10 +5,26 @@ import threading
 from django.http import QueryDict
 from psycopg2.extras import execute_values
 import re
+import os
 import numpy as np
 import pandas as pd
 import datetime
+import re
+from datetime import datetime
 from .models import *
+import pycountry
+import requests
+import geonamescache
+from google.cloud import translate
+from currency_symbols import CurrencySymbols
+import re
+import unicodedata
+
+from sqlalchemy import create_engine, text
+from urllib.parse import quote
+import environ
+
+
 class EmailThread(threading.Thread):
 
     def __init__(self, email):
@@ -64,25 +80,46 @@ class DBFunctions:
 
                 print(f"Erreur lors de l'exécution de la fonction {nom_fonction}: {e}")
                 return -1
+            
+
+    def exec_function_postgresql_get_all(nom_fonction, *args):
+
+        result= []
+        with connection.cursor() as cursor:
+
+            try:
+
+                # params = ', '.join('%s' for _ in args)
+                
+                # cursor.execute(f"SELECT {nom_fonction}({params});", args)
+
+                cursor.callproc(nom_fonction, list(args))
+
+                result = cursor.fetchall()
+                
+                return result
+            
+            except Exception as e:
+
+                print(f"Erreur lors de l'exécution de la fonction {nom_fonction}: {e}")
+                return result 
+
 
     def insert_dataframe_into_postgresql_table(dataframe, table_name):
-        
         try:
             with connection.cursor() as cursor:
                 dtype_mapping = {col: DBFunctions.map_numpy_type_to_sql(str(dataframe[col].dtype)) for col in dataframe.columns}
-                columns = ', '.join( [f"{DBFunctions.clean_column_name(header)} {dtype_mapping[header]}" for header in dataframe.columns])
-                #columns = columns = ", ".join([f"{DBFunctions.clean_column_name(header)} VARCHAR(255)" for header in headers])
-                cursor.execute(
-                    f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});")
+                columns = ', '.join([f"{DBFunctions.clean_column_name(header)} {dtype_mapping[header]}" for header in dataframe.columns])
+                create_table_query = f"CREATE TABLE IF NOT EXISTS {table_name} ({columns});"
+                cursor.execute(create_table_query)
 
                 # Disable constraint checks temporarily
                 with connection.constraint_checks_disabled():
-                    for i in range(0, len(dataframe)):
+                    for i in range(len(dataframe)):
                         row = list(dataframe.iloc[i, :])
-                        row = [val.item() if isinstance(val, np.generic)
-                               else val for val in row]
+                        row = [val.item() if isinstance(val, np.generic) else val for val in row]
                         placeholders = ", ".join(["%s"] * len(row))
-                        insert_query = f"INSERT INTO {table_name} VALUES ({placeholders});"
+                        insert_query = f"INSERT INTO {table_name} ({', '.join([DBFunctions.clean_column_name(col) for col in dataframe.columns])}) VALUES ({placeholders});"
                         cursor.execute(insert_query, row)
 
             return 0
@@ -90,6 +127,7 @@ class DBFunctions:
         except Exception as e:
             print(f"Error inserting data into the table {table_name}: {e}")
             return -1
+
         
 
     def map_numpy_type_to_sql(dtype):
@@ -127,29 +165,34 @@ class DBFunctions:
         return nested_data
 
 
-    def check_nulls(columns, meta_table, nom_bd) : 
+    def check_nulls(columns, meta_table, nom_bd, diagnostic) : 
 
         meta_col_instances = list()
-
+        #supprimer la colonne avec le nom_bd+ _id
+        columns = [col for col in list(columns) if col != f"{nom_bd}_id"]
         for i in range(len(list(columns))) :
 
             col = list(columns)[i]
 
             meta_colonne = MetaColonne()
             meta_colonne.nom_colonne = col
-            result_nb_nulls = DBFunctions.executer_fonction_postgresql('NombreDeNULLs', nom_bd, col)
+            res_diagnostic_nulls = DBFunctions.exec_function_postgresql_get_all('DiagnoticDeNULLs', nom_bd, col)
+            #get type of column
             result_type_col = DBFunctions.executer_fonction_postgresql('TypeDesColonne', str(nom_bd).lower(), str(col).lower())
-
-
-            if type(result_nb_nulls) != int :
-                meta_colonne.nombre_valeurs_manquantes = result_nb_nulls[0]
-                meta_colonne.meta_table = meta_table
-            else :
-                meta_colonne.meta_table = meta_table
-    
+            type_colonne = None
             if type(result_type_col) != int :
                 if result_type_col[0] :
                     meta_colonne.type_donnees = result_type_col[0]
+                    type_colonne = result_type_col[0]
+
+
+            #insert into DiagnosticDetail
+            for result in res_diagnostic_nulls:
+                DataGuardianDiagnostic.insert_diagnostic_details(result[0], col, None, "VALEUR_NULL", "La valeur est NULL", "VALEUR_NULL", diagnostic, type_colonne)
+            result_nb_nulls = len(res_diagnostic_nulls)
+
+            meta_colonne.nombre_valeurs_manquantes = result_nb_nulls
+            meta_colonne.meta_table = meta_table
 
             meta_colonne.nombre_valeurs = meta_table.nombre_lignes
             meta_colonne.save()
@@ -157,50 +200,129 @@ class DBFunctions:
             meta_col_instances.append(meta_colonne)
 
         return meta_col_instances
-    
 
-    def check_constraints(columns, nom_bd) : 
+
+    def check_constraints(columns, nom_bd, diagnostic, columns_types = {}, df = None) : 
 
         new_columns_instance = list()
 
         for col_instance in columns :
 
-            # On suppose que toutes les règles varchars s'appliquent sur cette colonne (On a pas encore la possibilité de connaitre la sémantique)
+            if col_instance.type_donnees == "integer":
+                pass
+            elif col_instance.type_donnees == "date":
+                pass
+            elif col_instance.type_donnees == "character varying":
+                
+                #type semantique numerique
+                if columns_types[col_instance.nom_colonne] == "numerique":
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_NUMERIQUE',
+                        'anomalie': 'VALEUR_NUMERIQUE_INCORRECTE',
+                        'commentaire' : "La valeur numérique est incorrecte", 
+                        'code_correction': "CODE_CORRECTION_NUMERIQUE",
+                        'type_donnee': 'numerique'
+                    }
+                    col_instance = SemanticFunctions.check_constraints_for_numeriques_type(col_instance, nom_bd, diagnostic, infos_diagnostic)
+                     
+                #type semantique email
+                elif columns_types[col_instance.nom_colonne] == "email":
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_EMAIL',
+                        'anomalie': 'EMAIL_INCORRECTE',
+                        'commentaire' : "L'adresse email est incorrecte", 
+                        'code_correction': "CODE_CORRECTION_EMAIL",
+                        'type_donnee': 'email'
+                    }
+                    #col_instance = SemanticFunctions.check_constraints_for_semantics_types(col_instance, nom_bd, diagnostic, infos_diagnostic)
+                    col_instance = SemanticFunctions.check_constraints_for_email_type(col_instance, nom_bd, diagnostic, infos_diagnostic)
+                
+                #type semantique date
+                elif columns_types[col_instance.nom_colonne] == "date":
+                    infos_diagnostic = {
+                        'categorie' : 'FORMAT_DATE',
+                        'anomalie': 'FORMAT_DATE_INCORRECTE',
+                        'commentaire' : "Le format de la date est incorrect", 
+                        'code_correction': "CODE_CORRECTION_FORMAT_DATE",
+                        'type_donnee': 'date'
+                    }
+                    col_instance = SemanticFunctions.check_date_format(df, col_instance, nom_bd, diagnostic, infos_diagnostic)
+                
+                elif columns_types[col_instance.nom_colonne] == "phone":
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_TELEPHONE',
+                        'anomalie': 'FORMAT_NUMERO_TELEPHONE_INCORRECTE',
+                        'commentaire' : "Le format du numéro de téléphone est incorrect", 
+                        'code_correction': "CODE_CORRECTION_PHONE",
+                        'type_donnee': 'phone'
+                    }
+                    col_instance = SemanticFunctions.check_constraints_for_semantics_types(col_instance, nom_bd, diagnostic, infos_diagnostic)
+                elif columns_types[col_instance.nom_colonne] == "adresse":
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_ADRESSE',
+                        'anomalie': 'FORMAT_ADRESSE_INCORRECTE',
+                        'commentaire' : "Le format adresse est incorrecte", 
+                        'code_correction': "CODE_CORRECTION_ADRESSE",
+                        'type_donnee': 'adresse'
+                    }
+                    col_instance = SemanticFunctions.check_constraints_for_semantics_types(col_instance, nom_bd, diagnostic, infos_diagnostic)
 
-            contraintes = MetaTousContraintes.objects.filter(category__icontains="String")
-            for constraint in contraintes : 
 
-                result_count_values_not_matching_regex = DBFunctions.executer_fonction_postgresql('count_values_not_matching_regex', nom_bd, col_instance.nom_colonne, constraint.contrainte)
+                elif columns_types[col_instance.nom_colonne] == "pays":
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_PAYS',
+                        'anomalie': 'PAYS_INCONNU_OU_MAL_ECRIT',
+                        'commentaire' : "Ce pays est non reconnu dans notre base des faits", 
+                        'code_correction': "CODE_CORRECTION_PAYS",
+                        'type_donnee': 'pays'
+                    }
+                    SemanticFunctions.check_anomalies_based_on(col_instance, nom_bd, diagnostic, infos_diagnostic=infos_diagnostic, base_faits='bf_pays_continent', col_base_faits='nom_pays_fr')
 
-                if type(result_count_values_not_matching_regex) != int :
+                    
 
-                    if result_count_values_not_matching_regex[0] != 0 :
+                elif columns_types[col_instance.nom_colonne] == "ville":
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_VILLE',
+                        'anomalie': 'VILLE_INCONNU_OU_MAL_ECRIT',
+                        'commentaire' : "ville non reconnu dans notre base des faits", 
+                        'code_correction': "CODE_CORRECTION_VILLE",
+                        'type_donnee': 'ville'
+                    }
+                    SemanticFunctions.check_anomalies_based_on(col_instance, nom_bd, diagnostic, infos_diagnostic=infos_diagnostic, base_faits='bf_ville', col_base_faits='nom_ville_fr')
 
-                        anomalie = MetaAnomalie()
-                        anomalie.nom_anomalie = constraint.nom_contrainte
-                        anomalie.valeur_trouvee = int(result_count_values_not_matching_regex[0])
-                        anomalie.save()
-                        col_instance.meta_anomalie.add(anomalie)
-                        
-            col_instance.contraintes.add(*contraintes)
+                elif columns_types[col_instance.nom_colonne] == "continent":
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_CONTINENT',
+                        'anomalie': 'CONTINENT_INCONNU_OU_MAL_ECRIT',
+                        'commentaire' : "Ce continent est non reconnu dans notre base des faits", 
+                        'code_correction': "CODE_CORRECTION_CONTINENT",
+                        'type_donnee': 'ville'
+                    }
+                    SemanticFunctions.check_anomalies_based_on(col_instance, nom_bd, diagnostic, infos_diagnostic=infos_diagnostic, base_faits='bf_pays_continent', col_base_faits='nom_continent_fr')
 
-            anomalies = col_instance.meta_anomalie.all()
+                elif columns_types[col_instance.nom_colonne] == "groupe_sanguin":
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_GROUPE_SANGUIN',
+                        'anomalie': 'GROUPE_SANGUIN_INCONNU',
+                        'commentaire' : "Ce groupe sanguin est non reconnu dans notre base des faits", 
+                        'code_correction': "CODE_CORRECTION_GROUPE_SANGUIN",
+                        'type_donnee': 'groupe_sanguin'
+                    }
+                    SemanticFunctions.check_anomalies_based_on(col_instance, nom_bd, diagnostic, infos_diagnostic=infos_diagnostic, base_faits='bf_groupe_sanguin', col_base_faits='groupe')
 
-            nb_anomalies = 0
+                elif columns_types[col_instance.nom_colonne] == "civilite":
+                    infos_diagnostic = {
+                        'categorie' : 'TYPE_CIVILITE',
+                        'anomalie': 'CIVILITE_INCONNU',
+                        'commentaire' : "civilité non reconnue dans notre base des faits", 
+                        'code_correction': "CODE_CORRECTION_CIVILITE",
+                        'type_donnee': 'civilite'
+                    }
+                    SemanticFunctions.check_anomalies_based_on(col_instance, nom_bd, diagnostic, infos_diagnostic=infos_diagnostic, base_faits='bf_civilite', col_base_faits='civilite')
 
-            if anomalies :
-
-                for anomalie_elt in anomalies :
-                    if anomalie_elt.nom_anomalie == "Premiere Forme normale" :
-                        if anomalie_elt.valeur_trouvee == 0 :
-                            nb_anomalies += 1
-                    else :
-                        if isinstance(anomalie_elt.valeur_trouvee, int) :
-                            if anomalie_elt.valeur_trouvee > 0 :
-                                nb_anomalies += anomalie_elt.valeur_trouvee
-
-            col_instance.nombre_anomalies = nb_anomalies
-            col_instance.save()
+                else:
+                    pass
+                   
             new_columns_instance.append(col_instance)
 
         return new_columns_instance
@@ -231,31 +353,58 @@ class DBFunctions:
         return new_columns_instance
     
 
-    def check_outliers(columns, nom_bd) : 
+
+    def count_doublons(table, nom_bd, attributs_cles) : 
+
+        result_doublons = DBFunctions.executer_fonction_postgresql('COUNT_DOUBLONS', str(nom_bd).lower(), str(attributs_cles).lower())
+
+        if 0 in result_doublons : 
+            if result_doublons[0] == 'integer' :
+                table.nombre_doublons = result_doublons[0]
+                table.save()
+
+        return result_doublons
+    
+    def count_doublons_with_pandas(table, df, nom_bd, diagnostic) : 
+        df_copy = df.copy()
+        df_copy = df_copy[df_copy.columns[1:]]
+        df_doublons = df_copy.duplicated()
+        
+        results = df[df_doublons]
+
+        for index, row in results.iterrows():
+            DataGuardianDiagnostic.insert_diagnostic_details(row[f"{nom_bd}_id"], "Ne dépend pas de la colonne", "", "DOUBLONS", "cette ligne est un doublon", "CODE_CORRECTION_DOUBLONS", diagnostic, "")
+
+
+        count = df_doublons.sum()
+        table.nombre_doublons = count
+        table.save()
+        return count
+    
+    
+    def check_outliers(columns, nom_bd,diagnostic,df, columns_types={}) : 
 
         new_columns_instance = list()
-
+        #supprimer la colonne avec le nom_bd+ _id
+        columns = [col for col in columns if col.nom_colonne != f"{nom_bd}_id"]
         for col_instance in columns :
 
-            result_type_col = DBFunctions.executer_fonction_postgresql('TypeDesColonne',str(nom_bd).lower(), str(col_instance.nom_colonne).lower())
+            col_instance.nombre_outliers = 0
+            if col_instance.type_donnees in DataGuardianDiagnostic.types_numeriques:
+                id_col_name= str(nom_bd).lower() + "_id"
+                res = DataGuardianDiagnostic.chechk_column_outliers_python(df, str(col_instance.nom_colonne), id_col_name)
+                nombre_outliers = len(res)
+                col_instance.nombre_outliers = nombre_outliers
 
-            if result_type_col[0] == 'integer' :
-
-                result_outliers = DBFunctions.executer_fonction_postgresql('count_outliers', str(nom_bd).lower(), str(col_instance.nom_colonne).lower(), 1.5)
-
-                col_instance.nombre_outliers = 0
-
-                if isinstance(result_outliers, tuple)  :
-                    if result_outliers[0] > 0 :
-                        col_instance.nombre_outliers = result_outliers[0]
-
+                for outlier in res: 
+                    DataGuardianDiagnostic.insert_diagnostic_details(outlier[0], col_instance.nom_colonne, outlier[1], "DETECTION_VALEUR_ABERANTE", "cette valeur a été détecté comme une valeur aberante", "CODE_CORRECTION_VALEUR_ABERRANTE", diagnostic, "integer")
+                
+                if nombre_outliers > 0 :
+                    anomalie = DBFunctions.save_number_of_anomalies("Valeurs abérantes", nombre_outliers)
+                    col_instance.meta_anomalie.add(anomalie)
                 col_instance.save()
-                new_columns_instance.append(col_instance)
 
-            else :
-                col_instance.nombre_outliers = 0
-                col_instance.save()
-                new_columns_instance.append(col_instance)
+            new_columns_instance.append(col_instance)
 
         return new_columns_instance
 
@@ -282,11 +431,32 @@ class DBFunctions:
 
         return new_columns_instance
 
-
-    def get_other_stats(columns, nom_bd) : 
-
+    def check_general_constraints(columns, nom_bd, diagnostic, columns_types = {}):
         new_columns_instance = list()
 
+        for col_instance in columns :
+
+            if col_instance.type_donnees == "character varying" and columns_types[col_instance.nom_colonne] == "UNKNOWN":
+                col_instance = SemanticFunctions.check_constraints_for_unknown(col_instance, nom_bd, diagnostic)
+            
+            new_columns_instance.append(col_instance)
+                
+        return new_columns_instance
+
+    def updateType(columns, columns_types):
+        col_instances = list()
+        for column in columns:
+            if columns_types[column.nom_colonne] != 'UNKNOWN':
+                column.type_donnees = columns_types[column.nom_colonne]
+                column.save()
+        col_instances.append(column)
+
+        return col_instances
+            
+
+
+    def get_other_stats(columns, nom_bd) : 
+        new_columns_instance = list()
         for col_instance in columns :
 
             result_uppercases = DBFunctions.executer_fonction_postgresql('CountUppercaseNames', str(nom_bd).lower(), str(col_instance.nom_colonne).lower())
@@ -296,13 +466,13 @@ class DBFunctions:
             result_max_val = DBFunctions.executer_fonction_postgresql('get_max_value', str(col_instance.nom_colonne).lower(), str(nom_bd).lower())
 
             if isinstance(result_uppercases, tuple):
-                    col_instance.nombre_majuscules = result_uppercases[0]
+                col_instance.nombre_majuscules = result_uppercases[0]
 
             if isinstance(result_lowercases, tuple) :
-                    col_instance.nombre_minuscules = result_lowercases[0]
+                col_instance.nombre_minuscules = result_lowercases[0]
 
             if isinstance(result_init_caps, tuple) :
-                    col_instance.nombre_init_cap = result_init_caps[0]
+                col_instance.nombre_init_cap = result_init_caps[0]
 
             if type(result_min_val) != int :
                 if result_min_val[0] :
@@ -329,7 +499,7 @@ class DBFunctions:
             score += (nombre_valeurs_manquantes  + nombre_outliers + nombre_anomalies)/nombre_valeurs
             # a voir (ajouter des pondérations)
 
-        score = score * 100 / len(columns)
+        score = score * 100 / (len(columns)-1)
         #save it 
         score_diagnostic = ScoreDiagnostic()
         score_diagnostic.valeur = 100-score
@@ -339,13 +509,45 @@ class DBFunctions:
         return score_diagnostic
        
 
+    def save_number_of_anomalie_in_meta_colonne(col_instance):
+        anomalies = col_instance.meta_anomalie.all()
+        nb_anomalies = 0
+        if anomalies :
+            for anomalie_elt in anomalies :
+                if anomalie_elt.nom_anomalie == "Premiere Forme normale" :
+                    if anomalie_elt.valeur_trouvee == 0 :
+                        nb_anomalies += 1
+                else :
+                    if isinstance(anomalie_elt.valeur_trouvee, int) :
+                        if anomalie_elt.valeur_trouvee > 0 :
+                            nb_anomalies += anomalie_elt.valeur_trouvee
+
+        col_instance.nombre_anomalies = nb_anomalies
+        col_instance.save()
+        return col_instance
     # Fonction pour nettoyer les noms de colonnes
-    def clean_column_name(name):  
+    def clean_column_name(name):
         new_name = name.strip() 
         res = re.sub(r'[^0-9a-zA-Z_]', '_', new_name)
         res.replace('', '_')
         res.replace('__', '_')
         return res
+    
+
+
+    def transform_string(input_string):
+        uppercase_string = input_string.upper()
+        replaced_spaces = uppercase_string.replace(' ', '_')
+        normalized_string = ''.join(char for char in unicodedata.normalize('NFD', replaced_spaces) if unicodedata.category(char) != 'Mn')
+        normalized_string = normalized_string.replace('-', '_')
+        return normalized_string
+    
+    def save_number_of_anomalies(nom_anomalie, valeur_trouvee):
+        anomalie = MetaAnomalie()
+        anomalie.nom_anomalie = nom_anomalie
+        anomalie.valeur_trouvee = valeur_trouvee
+        anomalie.save()
+        return anomalie
      
 class DataSplitInsertionFromFileFunctions:
     
@@ -412,7 +614,7 @@ class DataSplitInsertionFromFileFunctions:
                 # If unable to convert to numeric or datetime, keep as object
                 res[header] = column_series
 
-            return pd.DataFrame(res), headers
+            return pd.DataFrame(res)
 
         except Exception as e:
             print(f"Error parsing file : {e}")
@@ -420,7 +622,6 @@ class DataSplitInsertionFromFileFunctions:
 
 
         
-    
     def upload_file_to_dataframe_json(file, sep):
         try:
             df = pd.read_json(file, sep,)
@@ -430,7 +631,6 @@ class DataSplitInsertionFromFileFunctions:
             return -1
         
     
-
    
 
     def upload_file_to_dataframe_excel(file, header, sep):
@@ -448,11 +648,6 @@ class DataSplitInsertionFromFileFunctions:
             return None
     
     
-
-
-
-       
-    
     def verify1FN(dataframe):
         # Check if there are any duplicate columns
         if len(set(dataframe.columns)) != len(dataframe.columns):
@@ -464,11 +659,9 @@ class DataSplitInsertionFromFileFunctions:
         return dataframe
     
 
-
     # Fonction pour compter le nombre moyen de mots dans une colonne
     def average_word_count(series):
         return series.str.split(' ').str.len().mean()
-
 
 
     def process_data(df):
@@ -499,8 +692,6 @@ class DataSplitInsertionFromFileFunctions:
                         
         return df
 
-
-       
 class DataInsertionStep:
 
     def data_insertion(chemin_fichier, sep, header=True, table_name='', type_file='CSV'):
@@ -528,8 +719,21 @@ class DataInsertionStep:
 
         # TODO : 1FN
        # data = DataSplitInsertionFromFileFunctions.verify1FN(data)
+        
+       # update dataframe
+        dataframe = pd.DataFrame(data)
+        if not isinstance(dataframe, pd.DataFrame):
+            print("The provided 'dataframe' argument is not a pandas DataFrame")
+            return -1, None, None
 
-        return DBFunctions.insert_dataframe_into_postgresql_table(data, headers, db_name), data, db_name
+        # Générer les clés primaires en utilisant les indices du DataFrame comme valeurs entières
+        dataframe[f"{table_name}_id"] = dataframe.index + 1  # +1 pour commencer l'indexation à 1 au lieu de 0
+        # Déplacer la colonne de clé primaire au début du DataFrame
+        cols = dataframe.columns.tolist()
+        cols = cols[-1:] + cols[:-1]
+        dataframe = dataframe[cols]
+
+        return DBFunctions.insert_dataframe_into_postgresql_table(dataframe, db_name), dataframe, db_name
     
     
     def separateur (separateur) : 
@@ -541,3 +745,849 @@ class DataInsertionStep:
             return "\t"
         else : 
             return ","
+
+
+
+class DBTypesDetection :
+
+    BASE_DIR = settings.BASE_DIR
+    gc = geonamescache.GeonamesCache()
+    credential_path = os.path.join(BASE_DIR, 'DataGuardian/DataGuardianApp/db_configs/even-envoy-415900-c08ec858fa9b.json')
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credential_path
+    PARENT = f"projects/even-envoy-415900"
+
+
+    def check_text_spelling(text):
+        api_url = "https://api.languagetoolplus.com/v2/check"
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        data = {
+            "text": text,
+            "language": "fr",
+        }
+        
+        response = requests.post(api_url, headers=headers, data=data)
+        result = response.json()
+
+        return result
+
+
+    def verifier_format(chaine):
+
+        patterns = [
+            r'^[a-zA-Z0-9áàâäãåçéèêëíìîïñóòôöõúùûüýÿæœÁÀÂÄÃÅÇÉÈÊËÍÌÎÏÑÓÒÔÖÕÚÙÛÜÝŸÆŒ\s]+$',
+            r'^[a-zA-Z0-9áàâäãåçéèêëíìîïñóòôöõúùûüýÿæœÁÀÂÄÃÅÇÉÈÊËÍÌÎÏÑÓÒÔÖÕÚÙÛÜÝŸÆŒ\s,]+$',
+            r'^[a-zA-Z0-9áàâäãåçéèêëíìîïñóòôöõúùûüýÿæœÁÀÂÄÃÅÇÉÈÊËÍÌÎÏÑÓÒÔÖÕÚÙÛÜÝŸÆŒ,]+$',
+            r'^[a-zA-Z0-9áàâäãåçéèêëíìîïñóòôöõúùûüýÿæœÁÀÂÄÃÅÇÉÈÊËÍÌÎÏÑÓÒÔÖÕÚÙÛÜÝŸÆŒ\s,\-]+$',
+            r'^[a-zA-Z0-9áàâäãåçéèêëíìîïñóòôöõúùûüýÿæœÁÀÂÄÃÅÇÉÈÊËÍÌÎÏÑÓÒÔÖÕÚÙÛÜÝŸÆŒ\s-]+$',
+            r'^[a-zA-Z0-9áàâäãåçéèêëíìîïñóòôöõúùûüýÿæœÁÀÂÄÃÅÇÉÈÊËÍÌÎÏÑÓÒÔÖÕÚÙÛÜÝŸÆŒ,-]+$',
+        ]
+    
+        for pattern in patterns:
+            if re.match(pattern, chaine):
+                return True
+
+        return False
+
+
+    def decouper_chaine(chaine):
+        
+        separateurs = [' ', ',', '-']
+        mots = []
+
+        if DBTypesDetection.verifier_format(chaine):
+            mots = re.split(r'[, \-]+', chaine)
+            return mots
+
+        else:
+            return None
+
+
+    def translate_text(text: str, target_language_code: str) -> translate.Translation:
+        client = translate.TranslationServiceClient()
+        
+        if text and isinstance(text, str) :
+
+            response = client.translate_text(
+                parent = DBTypesDetection.PARENT,
+                contents = [str(text)],
+                target_language_code = target_language_code,
+            )
+
+            return response.translations[0]
+        else :
+
+            response = client.translate_text(
+                parent = DBTypesDetection.PARENT,
+                contents = ['None'],
+                target_language_code = target_language_code,
+            )
+
+            return response.translations[0]
+        
+    
+    def get_currencies(url):
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            
+            return [details['currencyCode'] for code, details in data["supportedCurrenciesMap"].items()]
+        else:
+            print("Erreur lors de la récupération des données")
+            return []
+    
+
+    def is_amount(text):
+    
+        cleaned_text = str(text).replace(" ", "")
+        currencies = DBTypesDetection.get_currencies("https://api.currencyfreaks.com/v2.0/supported-currencies")
+        
+        currencies_symboles = (CurrencySymbols.get_symbol(currency) for currency in currencies)
+        currencies_symboles_cleaned = [symbole for symbole in currencies_symboles if symbole is not None]        
+        regex = "|".join(re.escape(s) for s in set(currencies_symboles_cleaned))
+        pattern = re.compile(rf"^\d+\s*({regex})$")
+        
+        return bool(pattern.match(cleaned_text))
+
+        
+    def is_country(country_name):
+
+        if isinstance(country_name, str):
+            country_name = DBTypesDetection.translate_text(country_name, "en").translated_text
+            try:
+                pycountry.countries.lookup(country_name)
+                return True
+            except LookupError:
+                return False
+        else :
+            False
+
+
+    def is_city(chaine):
+        
+        if isinstance(chaine, str) :
+            villes = DBTypesDetection.gc.get_cities()
+
+            for ville_id in villes:
+                ville = villes[ville_id]
+                if chaine.lower() == ville['name'].lower():
+                    return True
+
+            return False
+        else : 
+            False
+
+
+    def is_address(chaine):
+
+        address_meta = MetaTousContraintes.objects.filter(
+            category = 'TYPE_ADRESSE'
+        ).first()
+
+        regex = address_meta.contrainte
+
+        if isinstance(chaine, str):
+            regex = re.compile(
+                regex,
+                re.IGNORECASE)      
+            return bool(regex.search(chaine))
+        else :
+            return False
+        
+    def is_blood_group(chaine):
+
+        groupe_sanguin_meta = MetaTousContraintes.objects.filter(
+            category = 'TYPE_GROUPE_SANGUIN'
+        ).first()
+
+        regex = groupe_sanguin_meta.contrainte
+
+        if isinstance(chaine, str):
+            regex = re.compile(regex)    
+            res =   bool(regex.search(chaine))
+            return res
+        else :
+            return False
+        
+    def is_civility(chaine):
+
+        civility_meta = MetaTousContraintes.objects.filter(
+            category = 'TYPE_CIVILITE'
+        ).first()
+
+        regex = civility_meta.contrainte
+
+        if isinstance(chaine, str):
+            regex = re.compile(regex)    
+            res =   bool(regex.search(chaine))
+            return res
+        else :
+            return False
+        
+
+    def is_email(chaine):
+
+        email_meta = MetaTousContraintes.objects.filter(
+            category = 'TYPE_EMAIL'
+        ).first()
+
+        regex = email_meta.contrainte
+        compiled_regex = re.compile(regex)
+
+        if isinstance(chaine, str):
+
+            if compiled_regex.match(chaine) :
+                return True
+            else :
+                return False
+        
+        else :
+            return False
+        
+
+    def is_phone_number(chaine):
+
+        phone_meta = MetaTousContraintes.objects.filter(
+            category = 'TYPE_TELEPHONE'
+        ).first()
+
+        regex = phone_meta.contrainte
+        compiled_regex = re.compile(regex)
+
+        if isinstance(chaine, str):
+
+            if compiled_regex.match(chaine) :
+                return True
+            else :
+                return False
+        
+        else :
+            return False
+        
+
+    def is_numeric(chaine):
+
+        numeric_meta = MetaTousContraintes.objects.filter(
+            category = 'TYPE_NUMERIQUE'
+        ).first()
+
+        regex = numeric_meta.contrainte
+        compiled_regex = re.compile(regex)
+
+        if isinstance(chaine, str):
+
+            if compiled_regex.match(chaine) :
+                return True
+            else :
+                return False
+        
+        else :
+            return False
+
+
+    def is_date(chaine):
+
+        date_meta = MetaTousContraintes.objects.filter(
+            category = 'TYPE_DATE'
+        ).first()
+
+        regex = date_meta.contrainte
+
+        return bool(re.match(regex, str(chaine)))
+        
+    
+
+    def check_type_in_column(df, column_name, check_function):
+
+        """
+        Vérifie le type de données dans une colonne d'un DataFrame en utilisant une fonction de vérification spécifiée.
+
+        Parameters:
+        - df (pd.DataFrame): Le DataFrame contenant la colonne à vérifier.
+        - column_name (str): Le nom de la colonne à vérifier.
+        - check_function (callable): La fonction de vérification à utiliser (ex: DBTypesDetection.is_country).
+
+        Returns:
+        Tuple[int, float]: Le nombre et le pourcentage de valeurs correspondant au type spécifié.
+        """
+
+        random_sample = df[column_name].dropna().sample(n=20, random_state=42)
+        results = random_sample.apply(check_function)
+        count_true = results.sum()
+        percentage_true = (count_true / len(results)) * 100
+
+        return count_true, percentage_true
+    
+
+    def determine_majority_type(columns):
+
+        result = {}
+        for column, types in columns.items():
+            sorted_types = sorted(types.items(), key=lambda x: x[1], reverse=True)
+            if sorted_types[0][1] > 50.0:
+                result[column] = sorted_types[0][0]
+            else:
+                result[column] = 'UNKNOWN'
+        return result
+
+
+    def detect_columns_type(df):
+
+        result = {}
+        for column in df.columns:
+
+
+            _, numeric_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_numeric)
+            if numeric_percentage > 60.0:
+                result[column] = {'numerique': numeric_percentage}
+                continue
+
+            _, amount_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_amount)
+            if amount_percentage > 60.0:
+                result[column] = {'montant': amount_percentage}
+                continue
+
+            _, date_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_date)
+            if date_percentage > 60.0:
+                result[column] = {'date': date_percentage}
+                continue
+
+            _, phone_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_phone_number)
+            if phone_percentage > 60.0:
+                result[column] = {'phone': phone_percentage}
+                continue
+
+            _, email_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_email)
+            if email_percentage > 60.0:
+                result[column] = {'email': email_percentage}
+                continue
+
+            _, civility_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_civility)
+            if email_percentage > 60.0:
+                result[column] = {'civilite': civility_percentage}
+                continue
+
+            _, countries_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_country)
+            if countries_percentage > 60.0:
+                result[column] = {'pays': countries_percentage}
+                continue
+
+            _, cities_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_city)
+            if cities_percentage > 60.0:
+                result[column] = {'ville': cities_percentage}
+                continue
+
+            _, address_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_address)
+            if address_percentage > 60.0:
+                result[column] = {'adresse': address_percentage}
+                continue
+
+            _, blood_group_percentage = DBTypesDetection.check_type_in_column(df, column, DBTypesDetection.is_blood_group)
+
+            if blood_group_percentage > 60.0:
+                result[column] = {'groupe_sanguin': blood_group_percentage}
+                continue
+
+            result[column] = {
+                'pays': countries_percentage,
+                'ville': cities_percentage,
+                'adresse': address_percentage,
+                'email': email_percentage,
+                'civilite': civility_percentage,
+                'phone': phone_percentage,
+                'numerique': numeric_percentage,
+                'montant': amount_percentage,
+                'date': date_percentage,
+                'groupe_sanguin': blood_group_percentage
+            }
+
+            final_types = DBTypesDetection.determine_majority_type(result)
+
+
+        return final_types
+
+
+class DataGuardianDiagnostic :
+        # Liste des types de données considérés comme numériques
+    types_numeriques = ['smallint', 'integer', 'bigint', 'decimal', 'numeric', 'real', 'double precision', 'smallserial', 'serial', 'bigserial']
+   
+    # @transaction.atomic
+    def insert_diagnostic_details(id_ligne, nom_colonne, valeur, anomalie, commentaire, code_correction,diagnostic,type_colonne):
+        try:
+            detail = DiagnosticDetail()
+            detail.id_ligne = id_ligne
+            detail.nom_colonne = nom_colonne
+            detail.valeur = valeur
+            detail.anomalie = DBFunctions.transform_string(anomalie)
+            detail.commentaire = commentaire
+            detail.code_correction = code_correction
+            detail.diagnostic = diagnostic
+            detail.type_colonne = type_colonne
+            detail.save()
+            return 0
+        except Exception as e:
+            print(f"Error inserting diagnostic details: {e}")
+            return -1      
+    
+    def chechk_column_outliers_python(df, col_name, id_col_name):
+        """
+        Identify outliers in a DataFrame column based on the Interquartile Range (IQR) method.
+        Returns the id_col_name and col_name values of the outliers.
+        """
+        col_value = df[col_name].values
+        id_col_value = df[id_col_name].values
+
+        Q1 = np.percentile(col_value, 25)
+        Q3 = np.percentile(col_value, 75)
+        IQR = Q3 - Q1
+
+        # Define bounds for outliers
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+
+        outliers = []
+        zip_iterator = zip(col_value, id_col_value)
+
+        for col, id_col in zip_iterator:
+            if col < lower_bound or col > upper_bound:
+                outliers.append((id_col, col))
+
+        return outliers
+    
+    def extraire_id(tuple_input):
+        # Extraire la chaîne du tuple
+        input_str = tuple_input[0]
+
+        # Enlever les caractères externes pour isoler 'X,Y'
+        clean_str = input_str[2:-3]
+
+        # Séparer sur la virgule pour obtenir X et Y
+        x_str, _ = clean_str.split(',')
+        
+        # Tenter de convertir X en nombre entier
+        try:
+            x = int(x_str)
+            return x
+        except ValueError:
+            print("La partie 'X' de la chaîne ne contient pas un nombre valide.")
+            return None
+
+class SemanticFunctions:
+
+    def check_constraints_for_semantics_types(col_instance, nom_bd, diagnostic, infos_diagnostic):
+        contraintes = MetaTousContraintes.objects.filter(category__icontains=infos_diagnostic["categorie"])
+        for constraint in contraintes : 
+            result_values_not_matching_regex = DBFunctions.exec_function_postgresql_get_all('values_not_matching_regex', nom_bd, col_instance.nom_colonne, constraint.contrainte)
+            count_anomalies = len(result_values_not_matching_regex)
+            #insérer le nombre d'anomalies détectés
+            if count_anomalies > 0 :
+                anomalie = DBFunctions.save_number_of_anomalies(constraint.nom_contrainte, count_anomalies)
+                col_instance.meta_anomalie.add(anomalie)
+            #insérer les résultats dans détail diagnostic
+            for result in result_values_not_matching_regex:
+                DataGuardianDiagnostic.insert_diagnostic_details(result[0], result[1], result[2], infos_diagnostic["anomalie"], infos_diagnostic["commentaire"], infos_diagnostic["code_correction"], diagnostic, infos_diagnostic["type_donnee"])
+                
+        col_instance.contraintes.add(*contraintes)
+        col_instance = DBFunctions.save_number_of_anomalie_in_meta_colonne(col_instance)
+        return col_instance
+    
+    
+    
+    def check_constraints_for_email_type(col_instance, nom_bd, diagnostic, infos_diagnostic):
+        contraintes = MetaTousContraintes.objects.filter(category__icontains=infos_diagnostic["categorie"])
+        result_values_not_matching_regex = DBFunctions.exec_function_postgresql_get_all('email_not_matching_regex', nom_bd, col_instance.nom_colonne)
+        count_anomalies = len(result_values_not_matching_regex)
+        #insérer le nombre d'anomalies détectés
+        if count_anomalies > 0 :
+            anomalie = DBFunctions.save_number_of_anomalies("Emails incorrectes", count_anomalies)
+            col_instance.meta_anomalie.add(anomalie)
+        #insérer les résultats dans détail diagnostic
+        for result in result_values_not_matching_regex:
+            DataGuardianDiagnostic.insert_diagnostic_details(result[0], result[1], result[2], infos_diagnostic["anomalie"], infos_diagnostic["commentaire"], infos_diagnostic["code_correction"], diagnostic, infos_diagnostic["type_donnee"])
+                
+        col_instance.contraintes.add(*contraintes)
+        col_instance = DBFunctions.save_number_of_anomalie_in_meta_colonne(col_instance)
+        return col_instance
+    
+
+    def check_constraints_for_numeriques_type(col_instance, nom_bd, diagnostic, infos_diagnostic):
+        contraintes = MetaTousContraintes.objects.filter(category__icontains=infos_diagnostic["categorie"])
+        result_values_not_matching_regex = DBFunctions.exec_function_postgresql_get_all('numerique_not_matching_regex', nom_bd, col_instance.nom_colonne)
+        count_anomalies = len(result_values_not_matching_regex)
+        #insérer le nombre d'anomalies détectés
+        if count_anomalies > 0 :
+            anomalie = DBFunctions.save_number_of_anomalies("Caractères non numeriques", count_anomalies)
+            col_instance.meta_anomalie.add(anomalie)
+        #insérer les résultats dans détail diagnostic
+        for result in result_values_not_matching_regex:
+            DataGuardianDiagnostic.insert_diagnostic_details(result[0], result[1], result[2], infos_diagnostic["anomalie"], infos_diagnostic["commentaire"], infos_diagnostic["code_correction"], diagnostic, infos_diagnostic["type_donnee"])
+                
+        col_instance.contraintes.add(*contraintes)
+        col_instance = DBFunctions.save_number_of_anomalie_in_meta_colonne(col_instance)
+        return col_instance
+
+    
+    def check_anomalies_based_on(col_instance, nom_bd, diagnostic, infos_diagnostic, base_faits, col_base_faits):
+        anomalies_based_on = DBFunctions.exec_function_postgresql_get_all('GetAnomaliesBasedOn', nom_bd, col_instance.nom_colonne, base_faits, col_base_faits)
+        count_anomalies = len(anomalies_based_on)
+        #insérer le nombre d'anomalies détectés
+        if count_anomalies > 0 :
+            anomalie = DBFunctions.save_number_of_anomalies(infos_diagnostic["commentaire"], count_anomalies)
+            col_instance.meta_anomalie.add(anomalie)
+        #insérer les résultats dans détail diagnostic
+        contraintes = MetaTousContraintes.objects.filter(category__icontains=infos_diagnostic["categorie"])
+        for result in anomalies_based_on:
+            DataGuardianDiagnostic.insert_diagnostic_details(result[0], col_instance.nom_colonne, result[1], infos_diagnostic["anomalie"], infos_diagnostic["commentaire"], infos_diagnostic["code_correction"], diagnostic, infos_diagnostic["type_donnee"])
+        
+        col_instance.contraintes.add(*contraintes)
+        col_instance = DBFunctions.save_number_of_anomalie_in_meta_colonne(col_instance)
+
+        return col_instance
+
+    
+    def check_constraints_for_unknown(col_instance, nom_bd, diagnostic):
+        contraintes = MetaTousContraintes.objects.filter(category__icontains="string")
+        for constraint in contraintes : 
+            result_values_not_matching_regex = DBFunctions.exec_function_postgresql_get_all('values_not_matching_regex', nom_bd, col_instance.nom_colonne, constraint.contrainte)
+            count_anomalies = len(result_values_not_matching_regex)
+            #insérer le nombre d'anomalies détectés
+            if count_anomalies > 0 :
+                anomalie = DBFunctions.save_number_of_anomalies(constraint.nom_contrainte, count_anomalies)
+                col_instance.meta_anomalie.add(anomalie)
+            #insérer les résultats dans détail diagnostic
+            for result in result_values_not_matching_regex:
+                DataGuardianDiagnostic.insert_diagnostic_details(result[0], result[1], result[2], constraint.nom_contrainte, constraint.nom_contrainte, "CODE_CORRECTION_GENERAL_CONSTRAINST", diagnostic, "UNKNOWN")
+                
+        col_instance.contraintes.add(*contraintes)
+        col_instance = DBFunctions.save_number_of_anomalie_in_meta_colonne(col_instance)
+        return col_instance
+
+
+
+    def get_date_format(date_string):
+        # List of common date formats to check against
+        date_formats = {
+        r'\d{4}-\d{2}-\d{2}': 'YYYY-MM-DD',
+        r'\d{2}-\d{2}-\d{4}': 'MM-DD-YYYY',
+        r'\d{2}/\d{2}/\d{4}': 'MM/DD/YYYY',
+        r'\d{4}/\d{2}/\d{2}': 'YYYY/MM/DD',
+        r'\d{2}\.\d{2}\.\d{4}': 'MM.DD.YYYY',
+        r'\d{4}\.\d{2}\.\d{2}': 'YYYY.MM.DD',
+        r'\d{2}\s[A-Z][a-z]{2}\s\d{4}': 'MM Mon YYYY',  
+        r'[A-Z][a-z]{2}\s\d{2},\s\d{4}': 'Mon DD, YYYY', 
+        r'\d{2}\s(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{4}': 'DD Mon YYYY (English)', 
+        r'\d{2}\s(janv\.|févr\.|mars|avr\.|mai|juin|juil\.|août|sept\.|oct\.|nov\.|déc\.)\s\d{4}': 'DD Mon YYYY (French)',
+        r'\d{2}/\d{2}/\d{2}': 'DD/MM/YY',
+        r'\d{2}-\d{2}-\d{2}': 'DD-MM-YY',
+    }
+        
+        if date_string != None:
+            for date_format, label in date_formats.items():
+                if re.match(date_format, date_string):
+                    return label
+        
+        
+        return "Format de date inconnu"
+    
+
+    def check_date_format(df, col_instance, nom_bd, diagnostic, infos_diagnostic):
+        df_copy = df.copy()
+        df_copy[col_instance.nom_colonne] = pd.to_datetime(df_copy[col_instance.nom_colonne], errors='coerce')
+        incorrect_formats = df_copy[df_copy[col_instance.nom_colonne].isna()]
+
+        df_bad_format = df[df.index.isin(incorrect_formats.index)]
+        # df_good_format = df[~df.index.isin(incorrect_formats.index)]
+        #df_bad_format[col_instance.nom_colonne + '_date_format'] = df[col_instance.nom_colonne].apply(SemanticFunctions.get_date_format)
+        
+        for row in df_bad_format[[nom_bd+'_id', col_instance.nom_colonne]].itertuples(index=False):
+            id_ligne = row[0]
+            valeur = row[1]
+            DataGuardianDiagnostic.insert_diagnostic_details(id_ligne, col_instance.nom_colonne, valeur, infos_diagnostic["anomalie"], infos_diagnostic["commentaire"], infos_diagnostic["code_correction"], diagnostic, infos_diagnostic["type_donnee"])
+
+        col_instance = DBFunctions.save_number_of_anomalie_in_meta_colonne(col_instance)
+        return col_instance
+
+
+    def replace_outliers(df, column, outliers, method='moyenne'):
+        
+        if method == 'mediane':
+            replacement_value = df[column].median()
+        else:
+            replacement_value = df[column].mean()
+        
+        df[column] = df[column].apply(
+            lambda x: replacement_value if x in outliers else x)
+        
+        return df
+    
+
+    def convert_date_format(date_str, output_format="%m-%d-%Y", input_format=None):
+
+        if input_format:
+            try:
+                date_obj = datetime.strptime(date_str, input_format)
+                return date_obj.strftime(output_format)
+            except ValueError:
+                return "Format de date inconnu ou incorrect."
+        else:
+            
+            possible_formats = [
+                "%Y-%m-%d", "%d-%m-%Y", "%m-%d-%Y",
+                "%Y/%m/%d", "%d/%m/%Y", "%m/%d/%Y",
+                "%Y.%m.%d", "%d.%m.%Y", "%m.%d.%Y",
+                "%Y %m %d", "%d %m %Y", "%m %d %Y",
+                "%b %d, %Y", "%d %b %Y",
+            ]
+            
+            for format_ in possible_formats :
+                try:
+                    date_obj = datetime.strptime(date_str, format_)
+                    return date_obj.strftime(output_format)
+                except ValueError:
+                    continue 
+            
+            return "Format de date inconnu."
+        
+
+    def remove_currency_symbol(amount):
+
+        numeric_amount = re.sub(r'[^\d.]+', '', amount)
+        return numeric_amount
+    
+
+
+    def replace_extra_spaces(string):
+        return re.sub(r'\s+', ' ', string).strip()
+    
+  
+        
+
+    
+
+    def convert_currency(amount, conversion_rate, new_currency_symbol=None):
+
+        numeric_amount = float(re.sub(r'[^\d.]+', '', amount))
+        converted_amount = numeric_amount * conversion_rate
+        
+        if new_currency_symbol:
+            return f"{new_currency_symbol}{converted_amount:,.2f}"
+        else:
+            return f"{converted_amount:,.2f}"
+        
+
+    def drop_duplicates_column(df):
+        
+        colonnes_a_supprimer = set()
+        for i in range(len(df.columns)):
+            for j in range(i+1, len(df.columns)):
+                if df.iloc[:,i].equals(df.iloc[:,j]):
+                    colonnes_a_supprimer.add(df.columns[j])
+        df_reduit = df.drop(columns=colonnes_a_supprimer)
+        return df_reduit
+        
+
+
+    #TODO : fonction pour corriger l'écriture des pays et villes (ref : GetAnomaliesSuggestions, GetAnomaliesBasedOn, TranslateCountryName)
+    #TODO : fonction pour corriger les numéros de téléphone ou les supprimer (ref : table des faits)
+    #TODO : fonction pour corriger les adresses email : supprimer ou pas
+        
+
+    def apply_correction(df, nom_colonne, fonction_correction):
+        
+        """
+        Applique une fonction de correction sur une colonne spécifique d'un DataFrame.
+
+        Parameters:
+        - df (pd.DataFrame): Le DataFrame sur lequel appliquer la correction.
+        - nom_colonne (str): Le nom de la colonne sur laquelle appliquer la fonction de correction.
+        - fonction_correction (function): La fonction de correction à appliquer sur la colonne.
+
+        Returns:
+        pd.DataFrame: Le DataFrame avec la colonne corrigée.
+        """
+        
+        df[nom_colonne] = df[nom_colonne].apply(fonction_correction)
+        return df
+
+
+class DBCorrection:
+    @staticmethod
+    def connect_to_database():
+        env = environ.Env()
+        environ.Env.read_env()
+        pwd = quote(env('POSTGRES_LOCAL_DB_PASSWORD'))  
+        connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:{env('DB_PORT')}/{env('POSTGRES_DB')}"
+        engine = create_engine(connection_string)
+        conn = engine.connect()
+        return conn
+
+    @staticmethod
+    def copy_database(nom_bd):
+        conn = DBCorrection.connect_to_database()
+        
+        # Vérifier si la table existe et la supprimer si c'est le cas
+        check_table_query = text(f"DROP TABLE IF EXISTS {nom_bd}_original")
+        conn.execute(check_table_query)
+
+        empty_table = text(f"CREATE TABLE {nom_bd}_original AS SELECT * FROM {nom_bd} WHERE 1 = 0;")
+        conn.execute(empty_table)
+
+        insert_copy = text(f"INSERT INTO {nom_bd}_original SELECT * FROM {nom_bd};")
+        conn.execute(insert_copy)
+
+        # Créer une copie de la table
+        # copy_table_query = text(f'CREATE TABLE {nom_bd}_original AS SELECT * FROM {nom_bd}')
+        # conn.execute(copy_table_query)
+
+        conn.close()
+
+    @staticmethod
+    def update_database_null_value(diag, db_name):
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = NULL WHERE {db_name}_id = {row['id_ligne']} OR {row['nom_colonne']} IN ('-', '?', ' -', '- ', '!')")
+        conn.close()
+
+    @staticmethod
+    def update_database_outlier_by_mean(diag, db_name):
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = (SELECT AVG({row['nom_colonne']}) FROM {db_name}) WHERE {db_name}_id = {row['id_ligne']}")
+        conn.close()
+
+    @staticmethod
+    def update_database_remove_spaces(diag, db_name) :
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            value = SemanticFunctions.replace_extra_spaces(row['nom_colonne'])
+            conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = trim({row['nom_colonne']}) WHERE {db_name}_id = {row['id_ligne']}")
+        conn.close()
+
+    @staticmethod
+    def update_database_delete_doublons(diag,db_name) :
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            conn.execute(f"DELETE FROM {db_name} WHERE {db_name}_id = {row['id_ligne']}")
+        conn.close()
+
+    @staticmethod
+    def removes_speciales_caracteres(diag,db_name) :
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            if row['type_colonne'] == 'UNKNOWN':
+                conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = regexp_replace({row['nom_colonne']}, '[^A-Za-z0-9]+', '', 'g') WHERE {db_name}_id = {row['id_ligne']}")
+        conn.close()
+
+    @staticmethod
+    def removes_invalid_emails(diag,db_name) :
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            if row['type_colonne'] == 'email':
+                conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = NULL WHERE {db_name}_id = {row['id_ligne']}")
+        conn.close()
+
+    @staticmethod
+    def fix_countries_errors(diag, db_name):
+        conn = DBCorrection.connect_to_database()
+        countries_columns = diag['nom_colonne'].unique()
+        DBCorrection.update_database_remove_spaces(diag, db_name)
+        DBCorrection.removes_speciales_caracteres(diag,db_name)
+        for country_column in countries_columns:
+            query = text(f"SELECT * FROM GetAnomaliesSuggestionsForCountry('{db_name}', '{country_column}', 0.85, 'fr')")
+            df = pd.read_sql_query(query, conn)
+            updated_ids = {}
+            for index, row in df.iterrows():
+                if row['id_ligne'] not in updated_ids:
+                    conn.execute(f"UPDATE {db_name} SET {country_column} = '{row['suggest']}' WHERE {db_name}_id = {row['id_ligne']}")
+                    updated_ids[row['id_ligne']] = row['suggest']
+        conn.close()
+
+        #homogénisation pays:
+        DBCorrection.string_to(diag, db_name, DBCorrection.string_to_upper)
+
+    def fix_errors_based_on(diag, db_name, base_faits,col_fait):
+        conn = DBCorrection.connect_to_database()
+        countries_columns = diag['nom_colonne'].unique()
+        DBCorrection.update_database_remove_spaces(diag, db_name)
+        for country_column in countries_columns:
+            query = text(f"SELECT * FROM GetAnomaliesSuggestions('{db_name}', '{country_column}', '{base_faits}', '{col_fait}', 0.85)")
+            df = pd.read_sql_query(query, conn)
+            updated_ids = {}
+            for index, row in df.iterrows():
+                if row['id_ligne'] not in updated_ids:
+                    suggest = row['suggest'].replace("'", "''")
+                    conn.execute(f"UPDATE {db_name} SET {country_column} = '{suggest}' WHERE {db_name}_id = {row['id_ligne']}")
+        conn.close()
+
+    
+    def fix_invalides_numerical_values(diag, db_name):
+        conn = DBCorrection.connect_to_database()
+        for index, row in diag.iterrows():
+            conn.execute(f"UPDATE {db_name} SET {row['nom_colonne']} = NULL WHERE {db_name}_id = {row['id_ligne']} OR {row['nom_colonne']} IN ('-', '?', ' -', '- ', '!')")
+        conn.close()
+
+    def string_to_capitalize(m):
+        if isinstance(m, str):
+            return m.lower().capitalize()
+    
+    def string_to_upper(m):
+        if isinstance(m, str):
+            return m.upper()
+        
+    def string_to_lower(m):
+        if isinstance(m, str):
+            return m.lower()
+
+    # def string_to_init_cap(diag, db_name):
+    #     noms_columns = diag['nom_colonne'].unique()
+    #     conn = DBCorrection.connect_to_database()
+    #     for nom_colonne in noms_columns:
+    #         query = text(f"SELECT * FROM {db_name}")
+    #         df = pd.read_sql_query(query, conn)
+    #         df[nom_colonne.lower()] = df[nom_colonne.lower()].apply(SemanticFunctions.string_to_capitalize)
+    
+    # def string_to_uppercase(diag, db_name):
+    #     noms_columns = diag['nom_colonne'].unique()
+    #     conn = DBCorrection.connect_to_database()
+    #     for nom_colonne in noms_columns:
+    #         query = text(f"SELECT * FROM {db_name}")
+    #         df = pd.read_sql_query(query, conn)
+    #         df[nom_colonne.lower()] = df[nom_colonne.lower()].apply(SemanticFunctions.string_to_upper)
+    #         for index, row in df.iterrows():
+    #             value = row[nom_colonne.lower()]
+    #             if  value != None:
+    #                 conn.execute(f"UPDATE {db_name} SET {nom_colonne} = '{value}' WHERE {db_name}_id = {row[db_name+'_id']}")
+        
+    #     conn.close()
+
+    def string_to(diag, db_name, nom_fonction):
+        noms_columns = diag['nom_colonne'].unique()
+        conn = DBCorrection.connect_to_database()
+        for nom_colonne in noms_columns:
+            query = text(f"SELECT * FROM {db_name}")
+            df = pd.read_sql_query(query, conn)
+            df[nom_colonne.lower()] = df[nom_colonne.lower()].apply(nom_fonction)
+            for index, row in df.iterrows():
+                value = row[nom_colonne.lower()]
+                if value is not None:
+                    update_query = f"UPDATE {db_name} SET {nom_colonne} = %s WHERE {db_name}_id = %s"
+                    conn.execute(update_query, (value, row[db_name+'_id']))
+
+        
+        conn.close()
+
+
+    
+    # def string_to_lowercase(diag, db_name):
+    #     noms_columns = diag['nom_colonne'].unique()
+    #     conn = DBCorrection.connect_to_database()
+    #     query = text(f"SELECT * FROM {db_name}")
+    #     df = pd.read_sql_query(query, conn)
+    #     for nom_colonne in noms_columns:
+    #         df[nom_colonne.lower()] = df[nom_colonne.lower()].apply(SemanticFunctions.string_to_lower)
+
+
+
+
+
+        conn.close()
+        

@@ -1,9 +1,8 @@
 from django.db import models
 from django.conf import settings
-from django.core.validators import MaxValueValidator, MinValueValidator, FileExtensionValidator, RegexValidator
+from django.core.validators import FileExtensionValidator, RegexValidator
 from django.utils.timezone import now
 from django.contrib.auth.hashers import make_password
-import os
 import datetime
 from django.utils import timezone
 
@@ -103,7 +102,6 @@ class Projet(models.Model):
     __repr__ = __str__
 
 
-   
 class BaseDeDonnees(models.Model):
 
     SQL = 'SQL'
@@ -201,6 +199,24 @@ class Diagnostic(models.Model):
 
     __repr__=__str__
 
+class DiagnosticDetail(models.Model):
+    diagnostic = models.ForeignKey(Diagnostic,related_name="diagnostic_detail", on_delete=models.CASCADE, null=False, blank=False)
+    id_ligne = models.IntegerField(null=True, blank=True)
+    nom_colonne = models.CharField(max_length=100)
+    valeur = models.CharField(max_length=1000, null=True, blank=True)
+    anomalie = models.CharField(max_length=100, null=True, blank=True)
+    type_colonne = models.CharField(max_length=100, null=True, blank=True)
+    commentaire = models.CharField(max_length=100, null=True, blank=True)
+    code_correction = models.CharField(max_length=100, null=True, blank=True)
+
+    def __str__(self):
+        return str(self.nom_colonne)
+    
+    __repr__=__str__
+
+
+    
+
 
 class MetaTable(models.Model):
 
@@ -209,6 +225,8 @@ class MetaTable(models.Model):
     date_creation = models.DateTimeField(auto_now_add=True)
     nombre_colonnes = models.IntegerField(null=True, blank=True)
     nombre_lignes = models.IntegerField(null=True, blank=True)
+    nombre_doublons = models.IntegerField(null=True, blank=True, default=None)
+    nombre_similaires = models.IntegerField(null=True, blank=True, default=None)
     commentaire = models.TextField(null=True, blank=True)
 
     def __str__(self):
@@ -234,7 +252,7 @@ class MetaTousContraintes(models.Model):
     
 
 class MetaAnomalie(models.Model):
-    nom_anomalie = models.CharField(max_length=50)
+    nom_anomalie = models.CharField(max_length=300)
     valeur_trouvee = models.IntegerField(null=True, blank=True)
 
     def __str__(self):

@@ -20,6 +20,7 @@ router.register(r'meta-tous-contraintes', MetaTousContraintesViewSet, basename='
 router.register(r'meta-colonne', MetaColonneViewSet, basename='Meta-colonne')
 router.register(r'score-diagnostic', ScoreDiagnosticViewSet, basename='score-diagnostic')
 router.register(r'projet', ProjetViewSet, basename='projet')
+router.register(r'diagnostic-detail', DiagnosticDetailViewSet, basename='diagnostic-detail')
 
 
 schema_view = get_schema_view(
@@ -39,5 +40,8 @@ urlpatterns = [
     url(r'^api/diagnostic/$', DiagnosticViewSet.as_view(), name='diagnostic'),
     url(r'^api/authenticate/$', LoginView.as_view(), name='login'),
     url(r'^api/logout/$', LogoutView.as_view(), name='logout'),
-    url(r'^api/semantic/$', SemanticInferenceView.as_view(), name='semantic')
+    url(r'^api/user-data/$', GetUserDataView.as_view(), name='user-data'),
+    url(r'^api/correction-anomalies/$', ApplyCorrectionView.as_view(), name='correction-anomalies'),
+    url(r'^api/download-data/$', DownloadDataView.as_view(), name='download-data')
+
 ]

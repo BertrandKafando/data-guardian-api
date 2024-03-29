@@ -10,7 +10,7 @@ from .authentication import *
 from django.contrib.auth import logout
 from .utils import Base64, DBFunctions, DataInsertionStep
 import os
-from .utils import Base64, DBFunctions
+from .utils import Base64, DBFunctions, DBTypesDetection,DBCorrection
 import os
 import datetime
 from django.core.files.base import ContentFile
@@ -22,18 +22,19 @@ import json
 from django.db import transaction
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-from sqlalchemy import create_engine, text as sql_text
 from langdetect import detect, LangDetectException
 from collections import Counter
 import re
 import pandas as pd
+from sqlalchemy import create_engine, text
+from django.http import HttpResponse
+import csv
+
 
 
 env = environ.Env()
 environ.Env.read_env()
 BASE_DIR = settings.BASE_DIR
-NLP_FR = settings.NLP_FR
-NLP_EN = settings.NLP_EN
 
 
 class RoleViewSet(ModelViewSet):
@@ -288,6 +289,8 @@ class DiagnosticViewSet(APIView):
 
         diagnostic_data = DBFunctions.extract_nested_data(request)
 
+        connected_user = request.user
+
         base_de_donnees_data = diagnostic_data.pop('base_de_donnees', None)
 
         if base_de_donnees_data :
@@ -320,7 +323,7 @@ class DiagnosticViewSet(APIView):
                 base_de_donnees.separateur)
             # chemin_fichier, sep, header=False, table_name='', type_file='CSV'
             table_creation_result, df, db_name = DataInsertionStep.data_insertion(
-                chemin_fichier_csv,separateur, base_de_donnees.avec_entete, base_de_donnees.nom_base_de_donnees, base_de_donnees.type_fichier)
+                chemin_fichier_csv, separateur, base_de_donnees.avec_entete, base_de_donnees.nom_base_de_donnees, base_de_donnees.type_fichier)
 
 
             if table_creation_result == 0 :
@@ -341,64 +344,149 @@ class DiagnosticViewSet(APIView):
 
                 meta_table.save()
 
-                if parametre_diagnostic == "VAL_MANQ" :
 
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, db_name)
-                    
+                """récupérer les types sémantiques"""
+                columns_types =  DBTypesDetection.detect_columns_type(df[df.columns[1:]])
+                # print(columns_types)
+                #columns_types = {'Column_0': 'UNKNOWN', 'Column_1': 'civilite', 'Column_2': 'UNKNOWN', 'Column_3': 'UNKNOWN', 'Column_4': 'UNKNOWN', 'Column_5': 'numerique', 'Column_6': 'UNKNOWN', 'Column_7': 'numerique', 'Column_8': 'ville', 'Column_9': 'pays', 'Column_10': 'email', 'Column_11': 'phone', 'Column_12': 'date', 'Column_13': 'date', 'Column_14': 'groupe_sanguin', 'Column_15': 'UNKNOWN'}
+                #columns_types = {'Employee': 'UNKNOWN', 'Amount':'numerique'}
+
+                #Diagnostic concernant tous les types
+                #vérifier les valeurs manquantes
+                
+                #compter les doublons
+
+                #ok
+                if parametre_diagnostic == "VAL_MANQ" :
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
                     DBFunctions.compute_score(meta_cols_instance_nulls, base_de_donnees)
+                    DBFunctions.updateType(meta_cols_instance_nulls, columns_types)
 
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS" :
 
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd)
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
 
-                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd,diagnostic=diagnostic, columns_types=columns_types, df=df)
 
                     DBFunctions.compute_score(meta_cols_instances_with_constraints, base_de_donnees)
 
+                    DBFunctions.updateType(meta_cols_instances_with_constraints, columns_types)
 
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN" :
 
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd)
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
 
-                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd,diagnostic=diagnostic, columns_types=columns_types, df=df)
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
                     DBFunctions.compute_score(meta_cols_instances_fn, base_de_donnees)
 
+                    DBFunctions.updateType(meta_cols_instances_fn, columns_types)
 
 
                 if parametre_diagnostic == "VAL_MANQ_CONTRAINTS_FN_DUPLICATIONS" :
 
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd)
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
 
-                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd,diagnostic=diagnostic, columns_types=columns_types, df=df)
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
+
+                    attributsCles = ', '.join(df.columns)
+
+                    DBFunctions.count_doublons_with_pandas(meta_table, df, nom_bd, diagnostic)
+
+                    # TODO COUNT SIMILAIRE
 
                     DBFunctions.compute_score(meta_cols_instances_fn, base_de_donnees)
 
+                    DBFunctions.updateType(meta_cols_instances_fn, columns_types)
 
-                if parametre_diagnostic == "ALL" :
 
-                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd)
+                if parametre_diagnostic == "ALL" :                    
+                    # All
+                    """
+                    - check_nulls
+                    - doublons & similaires
+                    - 1FN   
+                    - repetition de colonnes
+                    """
+                    
+                    # Number if
+                    """
+                    - check_outliers
+                    """
 
-                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd)
+                    # Date
+                    """
+                     - format incohérent
+                     - valeurs hors limite
+                    """
+
+                    # String
+                    """
+                    check_contraints:espaces superflus, repitions de lettres
+                    - Get Semantics (EMAIL,NUMERIC,DATE,TELEPHONE,PAYS,VILLE,ADRESSE,CONTIENT)
+                        - EMAIL : 
+                            check format
+                            check_contraints:Email
+                            repitions de lettres
+                        - NUMERIC :
+                            check les types
+                        - DATE :
+                            format incohérent
+                        - TELEPHONE :
+                            check format
+                            check_contraints:Telephone
+                        - PAYS :
+                            check fction anomalie
+                        - VILLE :
+                            check fction anomalie
+                        - CONTINENT :
+                            check fction anomalie
+                        - ADRESSE :
+
+                        - MONTANT :
+                            check fction anomalie
+
+                        -UNKNOWN :
+                            - get_other_stats
+                            - check_contraints
+                        
+                    """
+
+                    #all types
+                    meta_cols_instance_nulls = DBFunctions.check_nulls(df.columns, meta_table, nom_bd,diagnostic)
+
+                    meta_cols_instances_with_constraints = DBFunctions.check_constraints(meta_cols_instance_nulls, nom_bd,diagnostic=diagnostic, columns_types=columns_types, df=df)
 
                     meta_cols_instances_fn = DBFunctions.check_1FN(meta_cols_instances_with_constraints, nom_bd)
 
-                    meta_cols_outliers = DBFunctions.check_outliers(meta_cols_instances_fn, nom_bd)
+                    meta_cols_repetitions = DBFunctions.check_cols_repetitions(meta_cols_instances_fn, nom_bd)
+                    
+                    meta_cols_outliers = DBFunctions.check_outliers(meta_cols_repetitions, nom_bd,diagnostic,df, columns_types)
 
-                    meta_cols_repetitions = DBFunctions.check_cols_repetitions(meta_cols_outliers, nom_bd)
 
-                    meta_cols_others = DBFunctions.get_other_stats(meta_cols_repetitions, nom_bd)
+                    attributsCles = ', '.join(df.columns)
 
-                    DBFunctions.compute_score(meta_cols_others, base_de_donnees)
+                    DBFunctions.count_doublons_with_pandas(meta_table, df, nom_bd, diagnostic)
+                    
+                    meta_cols_others = DBFunctions.get_other_stats(meta_cols_outliers, nom_bd)
+
+                    meta_cols_general_constraints = DBFunctions.check_general_constraints(meta_cols_others, nom_bd, diagnostic, columns_types = columns_types)
+
+
+                    DBFunctions.compute_score(meta_cols_general_constraints, base_de_donnees)
+
+                    DBFunctions.updateType(meta_cols_general_constraints, columns_types)
 
                     #DBFunctions.check_funtional_dependancies(meta_cols_others, nom_bd)
 
+
+                
 
                 diagnostic.status = Diagnostic.TERMINE
                 diagnostic_data = DiagnosticSerializer(diagnostic).data
@@ -541,7 +629,6 @@ class MetaColonneViewSet(ModelViewSet):
 
         return queryset
 
-      
     
 class LoginView(APIView):
 
@@ -556,7 +643,6 @@ class LoginView(APIView):
             return Response({'detail': 'Données invalides'}, status = status.HTTP_400_BAD_REQUEST)
 
         user_instance = Utilisateur.objects.filter(compte__identifiant=authentication_serializer.data.get("identifiant")).first()
-
 
         user = authenticate(
             username = authentication_serializer.data.get("identifiant"),
@@ -573,12 +659,12 @@ class LoginView(APIView):
         #token_expire_handler will check, if the token is expired it will generate new one
         is_expired, token = token_expire_handler(token)   
         user_serialized = UtilisateurSerializer(user_instance)
-        permission=list(user.get_all_permissions())[0]
+        permission = list(user.get_all_permissions())[0]
         user_instance_data = user_serialized.data
         user_instance_data["identifiant"]=authentication_serializer.data.get("identifiant")
-        user_instance_data.pop('compte',None)
-        user_instance_data.pop('email',None)
-        user_instance_data.pop('telephone',None)
+        user_instance_data.pop('compte', None)
+        user_instance_data.pop('email', None)
+        user_instance_data.pop('telephone', None)
 
         return Response({
             'user': user_instance_data, 
@@ -607,7 +693,6 @@ class LogoutView(APIView):
         return Response({'detail':'utilisateur deconnecté'},status=status.HTTP_200_OK)
 
 
-
 class ProjetViewSet(ModelViewSet):
     serializer_class= ProjetSerializer
 
@@ -622,9 +707,6 @@ class ProjetViewSet(ModelViewSet):
     #         self.permission_classes= [IsCustomerAuthenticated ]
     #     return [permission() for permission in self.permission_classes]
 
-    # nlp_fr = spacy.load("fr_core_news_md")
-    # nlp_en = spacy.load("en_core_web_md")
-
     def get_queryset(self):
 
         user = self.request.user
@@ -638,98 +720,234 @@ class ProjetViewSet(ModelViewSet):
             queryset = Projet.objects.all()
 
         return queryset
+
+
+class DiagnosticDetailViewSet(ModelViewSet):
+    http_method_names = ["head","get"]
+    serializer_class= DiagnosticDetailSerializer
+    pagination_class = None
+
+    # def get_permissions(self):
+    #     if self.request.method == "GET":
+    #         self.permission_classes = [IsCustomerAuthenticated]
+    #     elif self.request.method == "POST":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "PUT" or self.request.method == "PATCH":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "DELETE":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     return [permission() for permission in self.permission_classes]
+
+    def get_queryset(self):
+        
+       bd_id = self.request.query_params.get('bd_id')
+       if bd_id:
+           bd = BaseDeDonnees.objects.filter(id=bd_id).first()
+           diagnostic = Diagnostic.objects.filter(base_de_donnees=bd).first()
+           diagnostic_id = diagnostic.id
+
+           if diagnostic_id:
+             queryset = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id)
+           else:
+                queryset = DiagnosticDetail.objects.all()
+           return queryset
+
+
+class GetUserDataView(APIView):
+    http_method_names = ["head","get"]
+
+    # def get_permissions(self):
+    #     if self.request.method == "GET":
+    #         self.permission_classes = [IsAuthenticated]
+
+
+    def get(self, request, *args, **kwargs):
+
+
+        from sqlalchemy import create_engine, text
+        from urllib.parse import quote
+
+        db_id = self.request.query_params.get('db_id')
+        #diagnostic_id = self.request.query_params.get('diagnostic_id')
+
+        if db_id :
+
+            user_db = BaseDeDonnees.objects.filter(id=db_id).first()
+            if user_db:
+                pwd = quote(env('POSTGRES_LOCAL_DB_PASSWORD'))  
+                connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:{env('DB_PORT')}/{env('POSTGRES_DB')}"
+                engine = create_engine(connection_string)
+                conn = engine.connect()
+                query = text(f'SELECT * FROM {user_db.nom_base_de_donnees} ORDER BY {user_db.nom_base_de_donnees}_id ASC')
+                df = pd.read_sql_query(query, conn)
+
+                # Convertir le DataFrame en chaîne JSON, puis en objet Python
+                data_json = df.to_json(orient='records', lines=False)
+                data = json.loads(data_json)
+
+                return Response(data, status=status.HTTP_200_OK)
+            else:
+                return Response({'detail': 'Base de données introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({'detail': 'Paramètre db_id manquant.'}, status=status.HTTP_400_BAD_REQUEST)
     
-    
-
-class SemanticInferenceView(APIView):
-
-    http_method_names = ["head","post"]
-
-    def determine_type_by_regex(texte, regex_patterns):
-        for type_entite, pattern in regex_patterns.items():
-            if re.search(pattern, texte, re.IGNORECASE):
-                return type_entite
-        return None
-    
-
-    def post(self, request, *args, **kwargs):
 
 
-        engine = create_engine(f'postgresql://{env("POSTGRES_USER")}:{env("POSTGRES_PASSWORD")}/{env("POSTGRES_DB")}')
-        conn = engine.connect()
+class ApplyCorrectionView(APIView):
+    http_method_names = ["head","get"]
+    serializer_class= DiagnosticDetailSerializer
+    pagination_class = None
 
-        # Définition des expressions régulières
-        regex_patterns = {
-            'EMAIL': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
-            'PHONE': r'\b\d{10}\b',
-            'DATE': r'\b\d{1,2}/\d{1,2}/\d{4}\b|\b\d{4}-\d{1,2}-\d{1,2}\b|\b\d{1,2} (Janvier|Février|Mars|Avril|Mai|Juin|Juillet|Août|Septembre|Octobre|Novembre|Décembre) \d{4}\b',
-            'ADDRESS': r'\b(?:Rue|Avenue|Boulevard|Place|Allée|Chemin|Voie|Quai|Square|Impasse)\s[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b',
-            'CODE POSTALE': r'\b\d{4,5}\b',
-            'GENRE': r'\b(Femme|F|femme|f|Homme|H|homme|h|M|Mâle|male|Femelle|femelle|Unspecified|unspecified|Non-binary|non-binary|NB|nb)\b'
-        }
+    # def get_permissions(self):
+    #     if self.request.method == "GET":
+    #         self.permission_classes = [IsCustomerAuthenticated]
+    #     elif self.request.method == "POST":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "PUT" or self.request.method == "PATCH":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     elif self.request.method == "DELETE":
+    #         self.permission_classes= [IsCustomerAuthenticated ]
+    #     return [permission() for permission in self.permission_classes]
 
-        df = pd.read_sql_query(con=conn, sql=sql_text("SELECT * FROM CLIENTS"))
+    def get(self, request, *args, **kwargs):
+        
+       bd_id = self.request.query_params.get('bd_id')
+       if bd_id:
+           bd = BaseDeDonnees.objects.filter(id=bd_id).first()
 
-        # Compteur pour chaque type d'entité par colonne
-        entites_par_colonne = {col: Counter() for col in df.columns}
+           # copy la base de données orginale
+           DBCorrection.copy_database(bd.nom_base_de_donnees)
+           diagnostic = Diagnostic.objects.filter(base_de_donnees=bd).first()
+           diagnostic_id = diagnostic.id
 
-        # Analyse des colonnes
-        for col in df.columns:
-            for item in df[col].dropna():
-                texte = str(item).strip()
-                if texte:
+           if diagnostic_id:
+             queryset_nulls = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="VALEUR_NULL")
+             df = pd.DataFrame(list(queryset_nulls.values()))
+             DBCorrection.update_database_null_value(df, bd.nom_base_de_donnees)
 
-                    # Vérifier avec les regex
-                    regex_type = SemanticInferenceView.determine_type_by_regex(texte, regex_patterns)
-                    if regex_type:
-                        entites_par_colonne[col][regex_type] += 1
-                        continue
+             queryset_outliers = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="DETECTION_VALEUR_ABERANTE")
+             df = pd.DataFrame(list(queryset_outliers.values()))
+             DBCorrection.update_database_outlier_by_mean(df, bd.nom_base_de_donnees)
 
-                    # Sinon, utiliser l'analyse NER
-                    try:
-                        langue = detect(texte) 
-                        if langue != 'fr' and langue != 'en' :
-                            langue = 'fr'
-                    except LangDetectException:
-                        langue = 'en'  
+             queryset_spaces = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="ESPACES_SUPERFLUS")
+             df = pd.DataFrame(list(queryset_spaces.values()))
+             DBCorrection.update_database_remove_spaces(df, bd.nom_base_de_donnees)
 
-                    nlp = NLP_FR if langue == 'fr' else NLP_EN
-                    doc = nlp(texte)
-                    for ent in doc.ents:
-                        entites_par_colonne[col][ent.label_] += 1
+             queryset_doublons = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="DOUBLONS")
+             df = pd.DataFrame(list(queryset_doublons.values()))
+             DBCorrection.update_database_delete_doublons(df, bd.nom_base_de_donnees)
+
+             queryset_special_caracteres = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="CARACTERES_SPECIAUX")
+             df = pd.DataFrame(list(queryset_special_caracteres.values()))
+             DBCorrection.removes_speciales_caracteres(df, bd.nom_base_de_donnees)
 
 
-        # Dictionary to map SpaCy labels to more descriptive names
-        label_map = {
-            "PER": ["CIVILITE", "NOM", "PRENOM"],
-            "NORP": "GROUPE",
-            "FAC": "INFRASTRUCTURE",
-            "ORG": "ORGANISATION",
-            "GPE": "ADRESSE",
-            "LOC": "ADRESSE",
-            "PRODUCT": "PRODUIT",
-            "EVENT": "EVENEMENT",
-            "WORK_OF_ART": "TITRE",
-            "LAW": "LOI",
-            "LANGUAGE": "LANGAGE",
-            "DATE": "DATE",
-            "TIME": "TEMPS",
-            "PERCENT": "POURCENTAGE",
-            "MONEY": "ARGENT",
-            "QUANTITY": "QUANTITE",
-            "ORDINAL": ["NIVEAU", "RANG", "CLASSE"],
-            "CARDINAL": "NUMERIQUE"
-        }
 
-        type_dominant_par_colonne = {col: entites.most_common(1)[0][0] if entites else 'Aucun' for col, entites in entites_par_colonne.items()}
 
-        # Function to map labels
-        def map_labels(data, label_map):
-            for key, value in data.items():
-                data[key] = label_map.get(value, value)
+             queryset_email = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="EMAIL_INCORRECTE")
+             df = pd.DataFrame(list(queryset_email.values()))
+             DBCorrection.removes_invalid_emails(df, bd.nom_base_de_donnees)
+             DBCorrection.string_to(df, bd.nom_base_de_donnees, DBCorrection.string_to_lower)
 
-        # Map the labels
-        map_labels(type_dominant_par_colonne , label_map)
 
-        return Response({'result':type_dominant_par_colonne}, status=status.HTTP_200_OK)
+
+             queryset_countries = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="PAYS_INCONNU_OU_MAL_ECRIT")
+             df = pd.DataFrame(list(queryset_countries.values()))
+             DBCorrection.fix_countries_errors(df, bd.nom_base_de_donnees)
+             
+
+             queryset_cities = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="VILLE_INCONNU_OU_MAL_ECRIT")
+             df = pd.DataFrame(list(queryset_cities.values()))
+             DBCorrection.fix_errors_based_on(df, bd.nom_base_de_donnees, 'bf_ville', 'nom_ville_fr')
+             DBCorrection.string_to(df, bd.nom_base_de_donnees, DBCorrection.string_to_capitalize)
+
+
+
+             queryset_civilities = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="CIVILITE_INCONNU")
+             df = pd.DataFrame(list(queryset_civilities.values()))
+             DBCorrection.fix_errors_based_on(df, bd.nom_base_de_donnees, 'bf_civilite', 'civilite')
+             DBCorrection.string_to(df, bd.nom_base_de_donnees, DBCorrection.string_to_capitalize)
+
+
+             queryset_blood_group = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="GROUPE_SANGUIN_INCONNU")
+             df = pd.DataFrame(list(queryset_blood_group.values()))
+             DBCorrection.fix_errors_based_on(df, bd.nom_base_de_donnees, 'bf_groupe_sanguin', 'groupe')
+             DBCorrection.string_to(df, bd.nom_base_de_donnees, DBCorrection.string_to_upper)
+
+           
+
+             queryset_invalides_numerics_values = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, anomalie="VALEUR_NUMERIQUE_INCORRECTE")
+             df = pd.DataFrame(list(queryset_invalides_numerics_values.values()))
+             DBCorrection.fix_invalides_numerical_values(df, bd.nom_base_de_donnees)
+
+             # homogénisation des types inconnus:
+             # les colonnes de type string et non reconnu dans les types sémantiques seront en init cap
+             queryset_unknown_type = DiagnosticDetail.objects.filter(diagnostic=diagnostic_id, type_colonne="UNKNOWN")
+             df = pd.DataFrame(list(queryset_unknown_type.values()))
+             DBCorrection.string_to(df, bd.nom_base_de_donnees, DBCorrection.string_to_capitalize)
+
+
+
+             # retourner la table corrigé
+             conn = DBCorrection.connect_to_database()
+             query = text(f'SELECT * FROM {bd.nom_base_de_donnees} ORDER BY {bd.nom_base_de_donnees}_id ASC')
+             df = pd.read_sql_query(query, conn)
+
+                # Convertir le DataFrame en chaîne JSON, puis en objet Python
+             data_json = df.to_json(orient='records', lines=False)
+             data = json.loads(data_json)
+
+             conn.close()
+
+             return Response(data, status=status.HTTP_200_OK)
+
+           else:
+                queryset = DiagnosticDetail.objects.all()
+           return queryset
+       
+
+class DownloadDataView(APIView):
+    http_method_names = ["head","get"]
+
+    # def get_permissions(self):
+    #     if self.request.method == "GET":
+    #         self.permission_classes = [IsAuthenticated]
+
+
+    def get(self, request, *args, **kwargs):
+
+
+        from sqlalchemy import create_engine, text
+        from urllib.parse import quote
+
+        db_id = self.request.query_params.get('bd_id')
+        #diagnostic_id = self.request.query_params.get('diagnostic_id')
+
+        if db_id :
+
+            user_db = BaseDeDonnees.objects.filter(id=db_id).first()
+            if user_db:
+                pwd = quote(env('POSTGRES_LOCAL_DB_PASSWORD'))  
+                connection_string = f"postgresql+psycopg2://{env('POSTGRES_LOCAL_DB_USERNAME')}:{pwd}@{env('DATABASE_LOCAL_HOST')}:{env('DB_PORT')}/{env('POSTGRES_DB')}"
+                engine = create_engine(connection_string)
+                conn = engine.connect()
+                query = text(f'SELECT * FROM {user_db.nom_base_de_donnees} ORDER BY {user_db.nom_base_de_donnees}_id ASC')
+                df = pd.read_sql_query(query, conn)
+
+                df = df[df.columns[1:]]
+
+                filename = user_db.nom_base_de_donnees.split('_')[0] + "_correction.csv"
+
+                response = HttpResponse(content_type='text/csv')
+                response['Content-Disposition'] = f"attachment; filename={filename}"  # Correct header name
+
+
+                df.to_csv(path_or_buf=response, index=False, quoting=csv.QUOTE_ALL)
+
+
+                return response
+            else:
+                return Response({'detail': 'Base de données introuvable.'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({'detail': 'Paramètre db_id manquant.'}, status=status.HTTP_400_BAD_REQUEST)
     

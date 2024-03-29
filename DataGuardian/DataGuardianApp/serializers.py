@@ -316,7 +316,12 @@ class DiagnosticSerializer(serializers.Serializer):
         instance.save()
 
         return instance
-    
+
+class DiagnosticDetailSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = DiagnosticDetail
+        fields = '__all__'  
 
 class MetaTableSerializer(serializers.ModelSerializer):
 
