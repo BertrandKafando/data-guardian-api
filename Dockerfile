@@ -14,31 +14,23 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1  
 
 # Update pip version
-RUN pip install --upgrade pip  
-
-# Copy requirements file
+RUN pip install --upgrade pip 
 COPY requirements.txt .
-
-# Create a virtual environment
-RUN python -m venv env
-
-# Activate virtual environment
-RUN . env/bin/activate
-
-# Upgrade pip and Install dependencies
 RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
-
-RUN pip install openpyxl
+    pip install -r requirements.txt && \
+    pip install openpyxl gunicorn
 
 # Copy application code
-COPY . $APP_FOLDER  
+COPY . .
 
 #  Copy the entrypoint
 COPY entrypoint.sh .
 
 # make entrypoint.sh executable
 RUN chmod +x entrypoint.sh
+
+COPY wait-for-it.sh /wait-for-it.sh
+RUN chmod +x /wait-for-it.sh
 
 # Expose port
 EXPOSE 8000  

@@ -142,7 +142,11 @@ def run_sql_scripts(sender, **kwargs):
 
     if OS_PLATFORM == "WINDOWS" : 
 
-        functions_script_path = os.path.join(BASE_DIR, "DataGuardian\DataGuardianApp\db_configs\\functions.sql")
+        #functions_script_path = os.path.join(BASE_DIR, "DataGuardian\DataGuardianApp\db_configs\\functions.sql")
+        functions_script_path = os.path.join(BASE_DIR, "DataGuardian/DataGuardianApp/db_configs/functions.sql")
+        base_de_faits_path = os.path.join(BASE_DIR, "DataGuardian/DataGuardianApp/db_configs/base_faits.sql")
+        test_data_script_path = os.path.join(BASE_DIR, "DataGuardian/DataGuardianApp/db_configs/test_data.sql")
+
         #test_data_script_path = os.path.join(BASE_DIR, "DataGuardian\DataGuardianApp\db_configs\\test_data.sql")
 
     try:
